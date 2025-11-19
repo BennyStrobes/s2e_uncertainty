@@ -13,38 +13,82 @@ import pysam
 import pdb
 import sys
 
+def split_genes_into_genomic_blocks(use_gene_list, tss_data_path, n_blocks=250):
+    gene_list_dicti = {}
+    for gene in use_gene_list:
+        gene_list_dicti[gene] = 1
 
+    f = open(tss_data_path)
+    head_count = 0
+    ordered_genes = []
+    ordered_tss = []
+    ordered_chroms = []
+    for line in f:
+        line = line.rstrip()
+        data = line.split('\t')
+        if head_count == 0:
+            head_count = head_count + 1
+            continue
+        gene_id = data[1]
+        if gene_id not in gene_list_dicti:
+            continue
+        line_chrom_num = int(data[2])
+        line_tss = int(data[6])
+        ordered_genes.append(gene_id)
 
+        ordered_tss.append(line_tss)
+        ordered_chroms.append(line_chrom_num)
+    f.close()
+    ordered_tss = np.asarray(ordered_tss)
+    ordered_chroms = np.asarray(ordered_chroms)
+    ordered_genes = np.asarray(ordered_genes)
+
+    order = np.lexsort((ordered_tss, ordered_chroms))
+    ordered_genes_sorted = np.array(ordered_genes)[order]
+    blocks = np.array_split(ordered_genes_sorted, n_blocks)
+    
+    return blocks
+
+def get_genes_from_block(indices, gene_blocks):
+    aa = []
+    for index in indices:
+        aa.append(gene_blocks[index])
+    return np.hstack(aa)
 
 
 
 #################
 # Command line args
 #################
-hg19_path = sys.argv[1]
+hg38_path = sys.argv[1]
 expr_path = sys.argv[2]
 tss_data_path = sys.argv[3]
 protein_coding_genes_file = sys.argv[4]
 model_save_dir = sys.argv[5]
+output_stem = sys.argv[6]
+bootstrap_iter = int(sys.argv[7])
 
+
+model_save_dir = model_save_dir + output_stem + '/'
 
 # make output dir if doesn't exist
 os.makedirs(model_save_dir, exist_ok=True)
 
 # Load in Tss data file
 gene_meta_info = pd.read_csv(tss_data_path, sep="\t",index_col='region_id')
-gene_meta_info['chr'] = gene_meta_info['chr_hg19'].str.replace('chr', '', regex=False)
-gene_meta_info['tss'] = pd.to_numeric(gene_meta_info['tss_hg19'], errors='coerce').astype('Int64')
+gene_meta_info['chr'] = gene_meta_info['chr_hg38'].str.replace('chr', '', regex=False)
+gene_meta_info['tss'] = pd.to_numeric(gene_meta_info['tss_hg38'], errors='coerce').astype('Int64')
 # Ben added
-gene_meta_info['pos'] = pd.to_numeric(gene_meta_info['tss_hg19'], errors='coerce').astype('Int64')
+gene_meta_info['pos'] = pd.to_numeric(gene_meta_info['tss_hg38'], errors='coerce').astype('Int64')
 gene_meta_info = gene_meta_info[gene_meta_info['chr'].isin(np.arange(1,23).astype(str))]
 
 
 # Load the processed expression data
-orig_expr_df = pd.read_csv(expr_path)
+#orig_expr_df = pd.read_csv(expr_path, skiprows=2, sep='\t')
+orig_expr_df = pd.read_csv(expr_path, sep='\t')
 
 # Randomly select 80% of individuals as training individuals
-all_expr_data_individauls=orig_expr_df.columns[4:-9]
+all_expr_data_individauls=orig_expr_df.columns[2:]
 n_train_individuals = int(.8*len(all_expr_data_individauls))
 np.random.seed(12)
 shuffled_indices = np.random.permutation(len(all_expr_data_individauls))
@@ -53,19 +97,44 @@ train_individuals = shuffled_individs[:n_train_individuals]
 
 # Put the expression data into the format required by ReferenceGenomeDataset (indexed by gene IDs, column values are sample names):
 expr_df = orig_expr_df[all_expr_data_individauls]
-expr_df.index=orig_expr_df['stable_id']
+expr_df.index=orig_expr_df['Name'].str.split('.').str[0]
+
+# Filter out zeros??
+#expr_df[(expr_df != 0.0).any(axis=1)]
+
+# Convert to log scale
+#expr_df = np.log(expr_df + 1)
 
 # Restrict genes to protein-coding genes that are present in the expression data and in the metadata
 protein_coding_gene_list = np.loadtxt(protein_coding_genes_file,delimiter=',',dtype=str)
-use_gene_list = np.intersect1d(np.intersect1d(protein_coding_gene_list, orig_expr_df['stable_id']), gene_meta_info.index)
+use_gene_list = np.intersect1d(np.intersect1d(protein_coding_gene_list, expr_df.index), gene_meta_info.index)
+
+# Split genes into blocks
+gene_blocks = split_genes_into_genomic_blocks(use_gene_list, tss_data_path, n_blocks=250)
+# Do bootstrapping
+np.random.seed(bootstrap_iter)
+n_samps = len(gene_blocks)
+bs_indices = np.random.choice(np.arange(n_samps), size=n_samps, replace=True)
+split_point = int(0.8 * n_samps)
+training_bs_indices = bs_indices[:split_point]
+validation_bs_indices  = bs_indices[split_point:]
+
+independent_validation_indices = []
+for validation_bs_index in validation_bs_indices:
+    if validation_bs_index not in training_bs_indices:
+        independent_validation_indices.append(validation_bs_index)
+independent_validation_indices = np.asarray(independent_validation_indices)
+
+train_genes = get_genes_from_block(training_bs_indices, gene_blocks)
+val_genes = get_genes_from_block(independent_validation_indices, gene_blocks)
+
 
 # Split by chromosome to get train, validaiton, and test gene sets
-train_genes, val_genes, test_genes = SAGEnet.tools.get_train_val_test_genes(use_gene_list,tss_data_path=tss_data_path, use_enformer_gene_assignments=False)
+#train_genes, val_genes, test_genes = SAGEnet.tools.get_train_val_test_genes(use_gene_list,tss_data_path=tss_data_path, use_enformer_gene_assignments=False)
 
 # Select train and validation gene meta information:
 train_gene_meta = gene_meta_info.loc[train_genes]
 val_gene_meta = gene_meta_info.loc[val_genes]
-
 
 # Ben added: not sure why needed
 # Make sure on valid chromosomes
@@ -74,18 +143,10 @@ val_gene_meta = gene_meta_info.loc[val_genes]
 
 # Initialize datasets and dataloaders
 input_len=40000
-train_dataset = SAGEnet.data.ReferenceGenomeDataset(metadata=train_gene_meta, hg38_file_path=hg19_path, y_data=expr_df, input_len=input_len,majority_seq=False,train_subs=train_individuals)
-val_dataset = SAGEnet.data.ReferenceGenomeDataset(metadata=val_gene_meta, hg38_file_path=hg19_path, y_data=expr_df, input_len=input_len,majority_seq=False,train_subs=train_individuals)
+train_dataset = SAGEnet.data.ReferenceGenomeDataset(metadata=train_gene_meta, hg38_file_path=hg38_path, y_data=expr_df, input_len=input_len,majority_seq=False,train_subs=train_individuals)
+val_dataset = SAGEnet.data.ReferenceGenomeDataset(metadata=val_gene_meta, hg38_file_path=hg38_path, y_data=expr_df, input_len=input_len,majority_seq=False,train_subs=train_individuals)
 train_dataloader = DataLoader(train_dataset,  shuffle=True)
 val_dataloader = DataLoader(val_dataset, shuffle=False)
-
-
-aa = []
-for info in train_dataloader:
-    aa.append(info[1][0])
-aa = np.asarray(aa)
-pdb.set_trace()
-
 
 
 # Initialize an r-SAGE-net model
