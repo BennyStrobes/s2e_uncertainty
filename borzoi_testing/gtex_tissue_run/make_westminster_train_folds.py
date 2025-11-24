@@ -157,7 +157,8 @@ def main():
 		parser.error("Must provide parameters and data directory.")
 	else:
 		params_file = os.path.abspath(args[0])
-		data_dirs = [os.path.abspath(arg) for arg in args[1:]]
+		submit_file = os.path.abspath(args[1])
+		data_dirs = [os.path.abspath(arg) for arg in args[2:]]
 
 	#######################################################
 	# prep work
@@ -191,8 +192,6 @@ def main():
 	if options.fold_subset_list is not None:
 		fold_index = [int(fold_str) for fold_str in options.fold_subset_list.split(",")]
 
-	pdb.set_trace()
-
 	# arrange data
 	for ci in range(options.crosses):
 		for fi in fold_index:
@@ -214,6 +213,7 @@ def main():
 	# train
 
 	jobs = []
+	t = open(submit_file,'w')
 
 	for ci in range(options.crosses):
 		for fi in fold_index:
@@ -237,15 +237,8 @@ def main():
 				make_rep_params(params_file, rep_dir, pretrained_model)
 
 				# train command
-				cmd = (
-					(". %s; " % os.environ["BASKERVILLE_CONDA"])
-					if "BASKERVILLE_CONDA" in os.environ
-					else ""
-				)
-				cmd += "conda activate %s;" % options.conda_env
-				cmd += " echo $HOSTNAME;"
-
-				cmd += " hound_train.py"
+				'''
+				cmd = "python hound_train.py"
 				cmd += " %s" % options_string(options, train_options, rep_dir)
 				cmd += " %s/params.json %s" % (rep_dir, " ".join(rep_data_dirs))
 
@@ -253,30 +246,21 @@ def main():
 				sbf = os.path.abspath(f"{rep_dir}/train.sb")
 				outf = os.path.abspath(f"{rep_dir}/train.out")
 				errf = os.path.abspath(f"{rep_dir}/train.err")
-
-				print(cmd)
-
-
 				'''
-				j = slurmrunner.Job(
-					cmd,
-					name,
-					outf,
-					errf,
-					sbf,
-					queue=options.queue,
-					cpu=8,
-					gpu=params_train.get("num_gpu", 1),
-					mem=30000,
-					time="60-0:0:0",
-				)
-				jobs.append(j)
-				'''
-	'''
-	slurmrunner.multi_run(
-		jobs, max_proc=options.processes, verbose=True, launch_sleep=10, update_sleep=60
-	)
-	'''
+
+				cmd_parts = [
+    				"hound_train.py",
+    				*options_string(options, train_options, rep_dir).split(),
+    				f"{rep_dir}/params.json",
+    				*rep_data_dirs,
+				]
+
+				cmd = " ".join(cmd_parts)
+
+				t.write(cmd + '\n')
+	t.close()
+
+
 
 
 
@@ -303,6 +287,7 @@ def make_rep_data(data_dir, rep_data_dir, fi, ci, identical_crosses):
 	train_folds = [
 		fold for fold in range(num_folds) if fold not in [valid_fold, test_fold]
 	]
+
 
 	# clear existing directory
 	if os.path.isdir(rep_data_dir):
@@ -358,6 +343,7 @@ def make_rep_data(data_dir, rep_data_dir, fi, ci, identical_crosses):
 	valid_tfrs = natsorted(
 		glob.glob("%s/tfrecords/fold%d-*.tfr" % (data_dir, valid_fold))
 	)
+
 	for valid_tfr in valid_tfrs:
 		valid_tfr = os.path.abspath(valid_tfr)
 		valid_rep_tfr = "%s/valid-%d.tfr" % (rep_tfr_dir, ti)

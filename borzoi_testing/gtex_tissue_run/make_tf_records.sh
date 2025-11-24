@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -t 0-12:30                         # Runtime in D-HH:MM format
+#SBATCH -t 0-11:30                         # Runtime in D-HH:MM format
 #SBATCH -p bch-compute                           # Partition to run in
 #SBATCH --mem=50GB                         # Memory total in MiB (for all cores)
 #SBATCH -c 8              # <-- request 8 CPU cores
@@ -42,25 +42,22 @@ AOPTS="--break 2097152 -c $CROP --nf 524288 --no 393216 -l $LENGTH --stride $TST
 DOPTS="-c $CROP -d 2 -f $FOLDS -l $LENGTH -p 64 -r 16 --umap_clip 0.5 -w $WIDTH"
 ###########################################
 
-if false; then
 cat "$UMAP_HUMAN" "$BLACK_HUMAN" \
   | awk 'BEGIN {OFS="\t"} {print $1, $2, $3}' \
   | bedtools sort -i - \
   | bedtools merge -i - \
   > ${tfrecords_dir}umap_human.bed
-fi
 
-if false; then
+
 cat "$UMAP_MOUSE" "$BLACK_MOUSE" \
   | awk 'BEGIN {OFS="\t"} {print $1, $2, $3}' \
   | bedtools sort -i - \
   | bedtools merge -i - \
   > ${tfrecords_dir}umap_mouse.bed
-fi
 
 
 
-if false; then
+
 python ${baskerville_code_dir}hound_data_align.py \
   -a hg38,mm10 \
   -g "$GAPS_HUMAN","$GAPS_MOUSE" \
@@ -69,7 +66,6 @@ python ${baskerville_code_dir}hound_data_align.py \
   -o "$OUT" \
   "$ALIGN" \
   "$FASTA_HUMAN","$FASTA_MOUSE"
-fi
 
 
 
@@ -82,7 +78,7 @@ python ${baskerville_code_dir}hound_data.py \
   -b "$BLACK_HUMAN" \
   -o "$OUT/hg38" \
   "$FASTA_HUMAN" \
-  -u {tfrecords_dir}umap_human.bed \
+  -u ${tfrecords_dir}umap_human.bed \
   ${gtex_target_file} \
   --local
 
