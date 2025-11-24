@@ -162,7 +162,6 @@ def main():
 
 	#######################################################
 	# prep work
-
 	if not options.restart and os.path.isdir(options.out_dir):
 		print(f"Output directory {options.out_dir} exists. Please remove.")
 		exit(1)
@@ -178,7 +177,6 @@ def main():
 	data_stats_file = f"{data_dirs[0]}/statistics.json"
 	with open(data_stats_file) as data_stats_open:
 		data_stats = json.load(data_stats_open)
-
 	# count folds
 	num_folds = len([dkey for dkey in data_stats if dkey.startswith("fold")])
 
@@ -187,7 +185,6 @@ def main():
 		num_folds = min(options.fold_subset, num_folds)
 
 	fold_index = [fold_i for fold_i in range(num_folds)]
-
 	# subset folds (list)
 	if options.fold_subset_list is not None:
 		fold_index = [int(fold_str) for fold_str in options.fold_subset_list.split(",")]
@@ -208,7 +205,6 @@ def main():
 
 	if options.setup:
 		exit(0)
-
 	#######################################################
 	# train
 
@@ -236,17 +232,6 @@ def main():
 					pretrained_model = None
 				make_rep_params(params_file, rep_dir, pretrained_model)
 
-				# train command
-				'''
-				cmd = "python hound_train.py"
-				cmd += " %s" % options_string(options, train_options, rep_dir)
-				cmd += " %s/params.json %s" % (rep_dir, " ".join(rep_data_dirs))
-
-				name = f"{options.name}-train-f{fi}c{ci}"
-				sbf = os.path.abspath(f"{rep_dir}/train.sb")
-				outf = os.path.abspath(f"{rep_dir}/train.out")
-				errf = os.path.abspath(f"{rep_dir}/train.err")
-				'''
 
 				cmd_parts = [
     				"hound_train.py",

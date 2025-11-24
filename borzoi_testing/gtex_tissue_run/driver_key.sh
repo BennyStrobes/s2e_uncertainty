@@ -15,6 +15,7 @@ borzoi_micro_json_file="/home/ch271704/tools/borzoi/tutorials/latest/train_model
 
 raw_fine_mapping_eqtl_results_file="/lab-share/CHIP-Strober-e2/Public/GTEx/fine_mapping/GTEx_49tissues_release1.tsv"
 
+gtex_sample_attributes_file="/lab-share/CHIP-Strober-e2/Public/GTEx/gtex_sample_attributes/GTEx_Analysis_v10_Annotations_SampleAttributesDS.txt"
 
 #################
 # Output directories
@@ -51,7 +52,7 @@ fi
 
 # Prepare training/validation/test data splits
 # Make file containing lines of submission instructions
-submission_file="submit_gtex.txt"
+submission_file="submit_gtex.txt" # Should change this to not local (but saved somewhere permanent!)
 if false; then
 source ~/.bashrc
 conda activate borzoi
@@ -64,6 +65,9 @@ while IFS= read -r command; do
     sbatch train_borzoi.sh "$baskerville_code_dir$command"
 done < "$submission_file"
 fi
+
+
+
 
 
 # Download borzoi data
@@ -87,11 +91,34 @@ fi
 
 
 borzoi_eqtl_output_dir=${borzoi_eqtl_effects_dir}"PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_borzoi_sed_results"
+if false; then
 source ~/.bashrc
 conda activate borzoi
 python "/home/ch271704/tools/borzoi/src/scripts/borzoi_sed.py" -o ${borzoi_eqtl_output_dir} --rc --stats logSED,logD2 -t ${model_training_dir}"micro_models/f0c0/data0/targets.txt" ${model_training_dir}"micro_models/f0c0/params.json" ${model_training_dir}"micro_models/f0c0/train/model_best.h5" $fm_vcf_output_file
+fi
+
+if false; then
+borzoi_eqtl_output_file=${borzoi_eqtl_effects_dir}"PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_cross_tissue.txt"
+python extract_borzoi_effects_cross_tissues.py $processed_fm_eqtl_output_file ${borzoi_eqtl_output_dir}"/sed.h5" $borzoi_eqtl_output_file $gtex_sample_attributes_file ${model_training_dir}"micro_models/f0c0/data0/targets.txt"
+fi
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+##############
+# OLD
+##############
 
 
 
