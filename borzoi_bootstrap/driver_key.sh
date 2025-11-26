@@ -46,19 +46,21 @@ borzoi_downloads_dir=${output_root}"borzoi_downloads/"
 # Make TF-records 
 # This is basically the Makefile in the borzoi tutorial (https://github.com/calico/borzoi/blob/main/tutorials/latest/make_data/Makefile)
 # But in a shell script because i'm not fancy
-# Has 100 folds built in 
+# Has 100 folds built in
 if false; then
 sbatch make_tf_records.sh ${gtex_target_file} ${tfrecords_dir} ${baskerville_code_dir}
 fi
 
 # Prepare training/validation/test data splits
 # Make file containing lines of submission instructions
-submission_file="submit_gtex.txt" # Should change this to not local (but saved somewhere permanent!)
+submission_file=${model_training_dir}"submit_bootstrapped_gtex.txt"
 if false; then
 source ~/.bashrc
 conda activate borzoi
-python make_westminster_train_folds.py -e borzoi -f 1 -c 1 -o ${model_training_dir}micro_models ${borzoi_micro_json_file} $submission_file ${tfrecords_dir}"hg38/"
+python make_westminster_bootstrapped_train_folds.py -e borzoi --boot_start 1 --boot_end 20 -o ${model_training_dir}bootstrapped_models ${borzoi_micro_json_file} $submission_file ${tfrecords_dir}"hg38/"
 fi
+
+submission_file=${model_training_dir}"submit_bootstrapped_gtex_only_first.txt"
 
 # Submit training jobs
 if false; then

@@ -36,7 +36,7 @@ LENGTH=393216
 TSTRIDE=131087   # 393216/3 - 15
 CROP=0
 WIDTH=32
-FOLDS=100
+FOLDS=75
 
 AOPTS="--break 2097152 -c $CROP --nf 524288 --no 393216 -l $LENGTH --stride $TSTRIDE -f $FOLDS --umap_t 0.5 -w $WIDTH"
 DOPTS="-c $CROP -d 2 -f $FOLDS -l $LENGTH -p 64 -r 16 --umap_clip 0.5 -w $WIDTH"
