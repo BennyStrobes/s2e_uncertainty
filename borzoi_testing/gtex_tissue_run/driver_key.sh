@@ -90,18 +90,17 @@ python make_vcf_out_of_eqtls.py $processed_fm_eqtl_output_file $fm_vcf_output_fi
 fi
 
 
-borzoi_eqtl_output_dir=${borzoi_eqtl_effects_dir}"PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_borzoi_sed_results"
+borzoi_eqtl_output_dir=${borzoi_eqtl_effects_dir}"PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_borzoi_sed_results_converged"
 if false; then
 source ~/.bashrc
 conda activate borzoi
 python "/home/ch271704/tools/borzoi/src/scripts/borzoi_sed.py" -o ${borzoi_eqtl_output_dir} --rc --stats logSED,logD2 -t ${model_training_dir}"micro_models/f0c0/data0/targets.txt" ${model_training_dir}"micro_models/f0c0/params.json" ${model_training_dir}"micro_models/f0c0/train/model_best.h5" $fm_vcf_output_file
 fi
 
-if false; then
 borzoi_eqtl_output_file=${borzoi_eqtl_effects_dir}"PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_cross_tissue.txt"
+if false; then
 python extract_borzoi_effects_cross_tissues.py $processed_fm_eqtl_output_file ${borzoi_eqtl_output_dir}"/sed.h5" $borzoi_eqtl_output_file $gtex_sample_attributes_file ${model_training_dir}"micro_models/f0c0/data0/targets.txt"
 fi
-
 
 
 
