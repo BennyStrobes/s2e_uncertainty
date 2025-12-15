@@ -312,6 +312,7 @@ def main():
 				snps[si], ref_preds, alt_preds, options.out_dir, model_stride
 			)
 
+
 		# for each overlapping gene
 		for gene_id, gene_slice in snpseq_gene_slice[si].items():
 			if len(gene_slice) > len(set(gene_slice)):

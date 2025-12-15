@@ -16,8 +16,6 @@ def extract_ordered_list_of_all_variant_ids_on_this_chromosome(gtex_sumstats_dir
 		if file_name.endswith('chr' + str(chrom_num) + '.parquet') == False:
 			continue
 
-		if counter > 0:
-			break
 		counter = counter + 1
 		print(file_name)
 		pf = pq.ParquetFile(gtex_sumstats_dir + file_name)
@@ -58,9 +56,9 @@ output_vcf_file = sys.argv[2]
 
 
 t = open(output_vcf_file,'w')
-t.write('##fileformat=VCFv4.2\n')
 
-for chrom_num in range(1,2):
+for chrom_num in range(1,23):
+	print(chrom_num)
 
 	# Extract ordered list of variant ids in this chromosome
 	variant_tuples = extract_ordered_list_of_all_variant_ids_on_this_chromosome(gtex_sumstats_dir, str(chrom_num))

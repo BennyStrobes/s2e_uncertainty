@@ -55,6 +55,14 @@ visualization_dir=${output_root}"visualize_borzoi/"
 # Run analysis
 #################
 
+# Get full target file (containing gtex tissue name too)
+full_gtex_target_file="/lab-share/CHIP-Strober-e2/Public/Borzoi_data/w5/gtex_targets_full.txt"
+if false; then
+source ~/.bashrc
+conda activate borzoi
+python add_gtex_tissue_names_to_target_files.py $gtex_target_file $full_gtex_target_file $gtex_sample_attributes_file
+fi
+
 # Make TF-records 
 # This is basically the Makefile in the borzoi tutorial (https://github.com/calico/borzoi/blob/main/tutorials/latest/make_data/Makefile)
 # But in a shell script because i'm not fancy
@@ -139,23 +147,37 @@ fi
 # GO beyond just fine-mapped eqtls
 gtex_all_snps_vcf=${gtex_snp_dir}"gtex_snps.vcf"
 if false; then
-sh generate_vcf_for_all_gtex_snps.sh $eqtl_sumstats_dir $gtex_all_snps_vcf
+sbatch generate_vcf_for_all_gtex_snps.sh $eqtl_sumstats_dir $gtex_all_snps_vcf
 fi
 
 
 
-gtex_all_snps_vcf=${gtex_snp_dir}"gtex_snps_short.vcf"
 
-bs_iter="1"
-output_file=${borzoi_gtex_predictions}"bs"${bs_iter}"_borzoi_pred_eqtl_effects_borzoi_sed_results.txt"
+
+
+
+part="0"
+gtex_all_snps_vcf=${gtex_snp_dir}"gtex_snps.vcf.part.0"$part
+
 if false; then
-sbatch fast_borzoi_sed.sh ${output_file} ${fm_vcf_output_file} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
+bs_iter="1"
+output_file=${borzoi_gtex_predictions}"bs"${bs_iter}"_part_"${part}"_borzoi_pred_eqtl_effects_borzoi_sed_results.txt"
+sbatch fast_borzoi_sed.sh ${output_file} ${gtex_all_snps_vcf} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
 fi
 
+if false; then
+for bs_iter in {3..20}; do
+    output_file=${borzoi_gtex_predictions}"bs"${bs_iter}"_part_"${part}"_borzoi_pred_eqtl_effects_borzoi_sed_results.txt"
+    sbatch fast_borzoi_sed.sh ${output_file} ${gtex_all_snps_vcf} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
+done
+fi
 
-
-
-
+if false; then
+for bs_iter in {41..50}; do
+    output_file=${borzoi_gtex_predictions}"bs"${bs_iter}"_part_"${part}"_borzoi_pred_eqtl_effects_borzoi_sed_results.txt"
+    sbatch fast_borzoi_sed.sh ${output_file} ${gtex_all_snps_vcf} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
+done
+fi
 
 
 
