@@ -18,6 +18,9 @@ def to_underscore(s: str) -> str:
 gtex_target_file = sys.argv[1]
 full_gtex_target_file = sys.argv[2]
 gtex_sample_attributes_file = sys.argv[3]
+gtex_tissue_names_file = sys.argv[4]
+gtex_eqtl_tissue_names_file = sys.argv[5]
+eqtl_sumstats_dir = sys.argv[6]
 
 
 #####################
@@ -63,7 +66,21 @@ for line in f:
 f.close()
 t.close()
 
-print(full_gtex_target_file)
+
+tmp = np.loadtxt(full_gtex_target_file,dtype=str,delimiter='\t')
+unique_tissues = np.sort(np.unique(tmp[1:,-1]))
+t = open(gtex_tissue_names_file,'w')
+t.write('tissue\n')
+t2 = open(gtex_eqtl_tissue_names_file,'w')
+t2.write('tissue\n')
+for tissue in unique_tissues:
+	t.write(tissue + '\n')
+	if os.path.isfile(eqtl_sumstats_dir + tissue + '.v10.allpairs.chr14.parquet'):
+		t2.write(tissue + '\n')
+t.close()
+t2.close()
+print(gtex_tissue_names_file)
+print(gtex_eqtl_tissue_names_file)
 
 
 
