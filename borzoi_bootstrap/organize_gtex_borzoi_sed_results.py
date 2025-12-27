@@ -49,13 +49,9 @@ full_gtex_target_file = sys.argv[2]
 organized_borzoi_gtex_predictions = sys.argv[3]
 
 # Command line args
-orig_bootstraps = np.arange(1,51)
+orig_bootstraps = np.arange(1,101)
 bootstraps = []
 for bs in orig_bootstraps:
-	if bs > 20 and bs <= 40:
-		continue
-	if bs == 9:
-		continue
 	bootstraps.append(bs)
 bootstraps = np.asarray(bootstraps)
 

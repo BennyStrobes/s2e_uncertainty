@@ -125,8 +125,9 @@ while IFS= read -r command; do
 done < "$submission_file"
 fi
 
-# Running on code temp2
-submission_file=${model_training_dir}"submit_bootstrapped_gtex_51_75.txt"
+# Running on code temp9
+# Messed up: 72, 71, 70, 69, 67, 66, 54 ????
+submission_file=${model_training_dirc}"submit_bootstrapped_gtex_51_75.txt"
 if false; then
 while IFS= read -r command; do
     sbatch train_borzoi.sh "$baskerville_code_dir$command"
@@ -135,6 +136,7 @@ fi
 
 
 # Run on code_temp1
+# messed up: 79
 submission_file=${model_training_dir}"submit_bootstrapped_gtex_76_100.txt"
 if false; then
 while IFS= read -r command; do
@@ -143,7 +145,6 @@ done < "$submission_file"
 fi
 
 # Running on code_temp2
-# 92-100 got messed up
 if false; then
 submission_file=${model_training_dir}"submit_bootstrapped_gtex_92_100.txt"
 while IFS= read -r command; do
@@ -152,13 +153,14 @@ done < "$submission_file"
 fi
 
 
-# done
+# code_temp4
+submission_file=${model_training_dir}"submit_bootstrapped_gtex_temper.txt"
 if false; then
-submission_file=${model_training_dir}"submit_bootstrapped_gtex_temper2.txt"
 while IFS= read -r command; do
     sbatch train_borzoi.sh "$baskerville_code_dir$command"
 done < "$submission_file"
 fi
+
 
 
 
@@ -186,12 +188,28 @@ for bs_iter in {1..20}; do
 done
 fi
 
+
 if false; then
 for bs_iter in {41..50}; do
     borzoi_eqtl_output_dir=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_borzoi_sed_results"
     sbatch borzoi_sed.sh ${borzoi_eqtl_output_dir} ${fm_vcf_output_file} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
 done
 fi
+
+
+# code_temp8
+if false; then
+for bs_iter in {1..20}; do
+    output_file=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_borzoi_sed_results.txt"
+    sbatch fast_borzoi_sed.sh ${output_file} ${fm_vcf_output_file} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
+done
+fi
+
+
+
+
+
+
 
 # Organize results across parallel jobs
 if false; then
@@ -225,20 +243,16 @@ fi
 part="0"
 gtex_all_snps_vcf=${gtex_snp_dir}"gtex_snps.vcf.part.0"$part
 
-
+# 70 hours of runtime here
 if false; then
-for bs_iter in {1..20}; do
+for bs_iter in {1..100}; do
     output_file=${borzoi_gtex_predictions}"bs"${bs_iter}"_part_"${part}"_borzoi_pred_eqtl_effects_borzoi_sed_results.txt"
     sbatch fast_borzoi_sed.sh ${output_file} ${gtex_all_snps_vcf} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
 done
 fi
 
-if false; then
-for bs_iter in {41..50}; do
-    output_file=${borzoi_gtex_predictions}"bs"${bs_iter}"_part_"${part}"_borzoi_pred_eqtl_effects_borzoi_sed_results.txt"
-    sbatch fast_borzoi_sed.sh ${output_file} ${gtex_all_snps_vcf} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
-done
-fi
+
+
 
 # Organize results across parallel runs
 if false; then

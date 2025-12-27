@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH -t 0-18:30                         # Runtime in D-HH:MM format
+#SBATCH -t 0-75:30                         # Runtime in D-HH:MM format
 #SBATCH -p bch-compute                           # Partition to run in
-#SBATCH --mem=3GB  
+#SBATCH --mem=4GB  
 
 
 
