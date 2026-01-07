@@ -302,7 +302,7 @@ def make_correlation_plot_colored_by_sig(susie, borzoi_mean, same_sign_indices,o
 		linewidth=0.3
 	)
 
-	plt.xlabel("SuSiE Effect Size")
+	plt.xlabel("MPRA effect size")
 	plt.ylabel("Borzoi Mean Effect Size")
 	plt.title(f"Total corr: {corry_fmt} / Sig subset corr: {new_corry_fmt} / Total sig: {n_total_sig}")
 
@@ -426,10 +426,10 @@ output_dir = sys.argv[2]
 
 # Load in data
 raw_data = np.loadtxt(input_summary_file, dtype=str, delimiter='\t')
-maf = raw_data[1:,8].astype(float)
-susie = raw_data[1:,-5].astype(float)
-borzoi_mean = raw_data[1:,-3].astype(float)
-borzoi_se = raw_data[1:, -2].astype(float)
+susie = raw_data[1:,7].astype(float)
+borzoi_mean = raw_data[1:,12].astype(float)
+borzoi_se = raw_data[1:, 13].astype(float)
+borzoi_bs = get_bootstrapped_estimates(raw_data[1:,14])
 borzoi_zeds = borzoi_mean/borzoi_se
 
 
@@ -437,14 +437,11 @@ borzoi_zeds = borzoi_mean/borzoi_se
 borzoi_gaus_pvalues = 2 * (1 - norm.cdf(np.abs(borzoi_zeds)))
 
 
-borzoi_bs = get_bootstrapped_estimates(raw_data[1:,-1])
 np_p_plus = (1 + np.sum(borzoi_bs >= 0,axis=1))/(1+borzoi_bs.shape[1])
 np_p_minus = (1 + np.sum(borzoi_bs <=0,axis=1))/(1+borzoi_bs.shape[1])
 borzoi_pvalues = 2.0*np.min((np_p_plus, np_p_minus),axis=0)
 
 min_bs = np.min(np.abs(borzoi_bs),axis=1)
-
-pdb.set_trace()
 
 
 thresh = [1.5, 2.0, 2.5]
@@ -462,14 +459,18 @@ output_file = output_dir + 'borzoi_vs_qtl_scatter_colored_by_borzoi_neg_log10_p.
 #make_correlation_plot_colored_by_abs_borzoi(susie, borzoi_mean, -np.log10(np_p), output_file, '-log10(p)')	
 
 same_sign_indices = (get_same_sign_indices(borzoi_bs,thresh=0)) #& (np.min(np.abs(borzoi_bs),axis=1) > .01)
+same_sign_indices = borzoi_pvalues < .2
+#same_sign_indices = np.abs(borzoi_mean) > .1
 output_file = output_dir + 'borzoi_vs_qtl_scatter_colored_by_borzoi_sig.png'
-#make_correlation_plot_colored_by_sig(susie, borzoi_mean, same_sign_indices,output_file)
+make_correlation_plot_colored_by_sig(susie, borzoi_mean, same_sign_indices,output_file)
+
+print(get_sign_concordance(susie[same_sign_indices], borzoi_mean[same_sign_indices], return_ci=True))
 
 
 
 # Plot sign concordance as a function of p-value threshold
 output_file = output_dir + 'sign_concordance_by_pvalue_threshold.png'
-sign_concordance_vs_p_value_thresh(susie, borzoi_mean, borzoi_pvalues, output_file)
+#sign_concordance_vs_p_value_thresh(susie, borzoi_mean, borzoi_pvalues, output_file)
 
 
 # Plot correlation dependence on number of bootstraps
@@ -495,11 +496,11 @@ output_file = output_dir + 'num_bootstraps_vs_num_hits_scatter.png'
 
 # Plot histogram of p-values
 output_file = output_dir + 'pvalue_histogram.png'
-plot_pvalue_histogram(borzoi_pvalues, output_file)
+#plot_pvalue_histogram(borzoi_pvalues, output_file)
 
 # Plot histogram of p-values
 output_file = output_dir + 'gaus_pvalue_histogram.png'
-plot_pvalue_histogram(borzoi_gaus_pvalues, output_file)
+#plot_pvalue_histogram(borzoi_gaus_pvalues, output_file)
 
 
 

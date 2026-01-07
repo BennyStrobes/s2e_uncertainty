@@ -28,6 +28,10 @@ genotype_1000G_plink_stem="/lab-share/CHIP-Strober-e2/Public/1000G_Phase3/hg38/1
 
 hm3_snp_list_file="/lab-share/CHIP-Strober-e2/Public/1000G_Phase3/hg38/w_hm3.noMHC.snplist"
 
+ldsc_snp_annotation_dir="/lab-share/CHIP-Strober-e2/Public/ldsc/reference_files/1000G_EUR_Phase3_hg38/baselineLD_v2.2/"
+
+ldsc_hg19_cell_type_annotation_dir="/lab-share/CHIP-Strober-e2/Public/ldsc/reference_files/1000G_EUR_Phase3/cell_type_groups/"
+
 #################
 # Output directories
 #################
@@ -55,8 +59,20 @@ borzoi_gtex_predictions=${output_root}"borzoi_gtex_predicted_effects/"
 # Organized borzoi gtex predictions
 organized_borzoi_gtex_predictions=${output_root}"organized_borzoi_gtex_predictions/"
 
+# bayes_posterior_effect_predictions
+bayes_posterior_effect_predictions_dir=${output_root}"bayesian_borzoi_gtex_predictions/"
+
 # Download borzoi data
 borzoi_downloads_dir=${output_root}"borzoi_downloads/"
+
+# Download borzoi data
+expression_correlation_dir=${output_root}"expression_correlation/"
+
+# Exploration of genome wide predictions dirctory
+explore_genome_wide_pred_dir=${output_root}"genome_wide_pred_exploratory/"
+
+# Variant annotation enrichments
+variant_annotation_enrichment_dir=${output_root}"variant_annotation_enrichment/"
 
 # Visualization dir
 visualization_dir=${output_root}"visualize_borzoi/"
@@ -179,41 +195,20 @@ fi
 
 ##############################################################
 # Get predicted Borzoi effects for fine-mapped eqtls
-# Note: change to borzoi_sed_fast.sh
 # Submit parallel jobs
-if false; then
-for bs_iter in {1..20}; do
-    borzoi_eqtl_output_dir=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_borzoi_sed_results"
-    sbatch borzoi_sed.sh ${borzoi_eqtl_output_dir} ${fm_vcf_output_file} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
-done
-fi
-
-
-if false; then
-for bs_iter in {41..50}; do
-    borzoi_eqtl_output_dir=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_borzoi_sed_results"
-    sbatch borzoi_sed.sh ${borzoi_eqtl_output_dir} ${fm_vcf_output_file} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
-done
-fi
 
 
 # code_temp8
 if false; then
-for bs_iter in {1..20}; do
+for bs_iter in {1..100}; do
     output_file=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_borzoi_sed_results.txt"
     sbatch fast_borzoi_sed.sh ${output_file} ${fm_vcf_output_file} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
 done
 fi
 
-
-
-
-
-
-
-# Organize results across parallel jobs
+# Organize results across parallel runs
 if false; then
-sh organize_borzoi_predicted_eqtl_effects.sh ${borzoi_eqtl_effects_dir} $pip_threshold $processed_fm_eqtl_output_file $gtex_sample_attributes_file ${model_training_dir}"bootstrapped_models/"
+sh organize_gtex_borzoi_sed_results_fm.sh ${borzoi_eqtl_effects_dir} $full_gtex_target_file $borzoi_eqtl_effects_dir $processed_fm_eqtl_output_file
 fi
 
 
@@ -223,7 +218,11 @@ if false; then
 source ~/.bashrc
 conda activate borzoi
 python visualize_borzoi_estimated_effects.py $borzoi_eqtl_effects_dir"cross_bootstrap_PIP_0.9_borzoi_pred_eqtl_effects_cross_tissue.txt" $visualization_dir
+source ~/.bashrc
+conda activate plink_env
+Rscript visualize_borzoi_fine_mapped_effects.R $borzoi_eqtl_effects_dir"cross_bootstrap_PIP_0.9_borzoi_pred_eqtl_effects_cross_tissue.txt" $visualization_dir
 fi
+
 
 
 ##############################################################
@@ -251,6 +250,14 @@ for bs_iter in {1..100}; do
 done
 fi
 
+if false; then
+part="1"
+gtex_all_snps_vcf=${gtex_snp_dir}"gtex_snps.vcf.part.0"$part
+for bs_iter in {51..75}; do
+    output_file=${borzoi_gtex_predictions}"bs"${bs_iter}"_part_"${part}"_borzoi_pred_eqtl_effects_borzoi_sed_results.txt"
+    sbatch fast_borzoi_sed.sh ${output_file} ${gtex_all_snps_vcf} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
+done
+fi
 
 
 
@@ -261,8 +268,46 @@ fi
 
 
 tissue_name="Muscle_Skeletal"
+bayes_fit_output_root=${bayes_posterior_effect_predictions_dir}"gibbs_ash_model_"${tissue_name}"results"
 if false; then
-sh rss_correlation_of_borzoi_genetic_expression.sh $tissue_name $organized_borzoi_gtex_predictions${tissue_name}"_borzoi_estimates_w_uncertainty.txt" $eqtl_sumstats_dir $protein_coding_genes_file $genotype_1000G_plink_stem $hm3_snp_list_file
+sh fit_bayesian_posterior_to_borzoi_effects.sh $organized_borzoi_gtex_predictions${tissue_name}"_borzoi_estimates_w_uncertainty.txt" $bayes_fit_output_root
+fi
+
+
+tissue_name="Muscle_Skeletal"
+expr_correlation_summary_file=${expression_correlation_dir}${tissue_name}"_expression_correlation_summary.txt"
+if false; then
+sh rss_correlation_of_borzoi_genetic_expression.sh $tissue_name $organized_borzoi_gtex_predictions${tissue_name}"_borzoi_estimates_w_uncertainty.txt" $eqtl_sumstats_dir $protein_coding_genes_file $genotype_1000G_plink_stem $hm3_snp_list_file $expr_correlation_summary_file
+fi
+
+
+
+# Need to run for all tissues
+if false; then
+tail -n +2 $gtex_tissue_names_file | while read -r tissue_name; do
+    sig_thresh="0.05"
+    variant_annotation_enrichment_file=$variant_annotation_enrichment_dir"variant_enrichments_"${tissue_name}"_"${sig_thresh}"_summary.txt"
+    remove_coding="False"
+    sbatch variant_annotation_enrichment.sh $organized_borzoi_gtex_predictions${tissue_name}"_borzoi_estimates_w_uncertainty.txt" $genotype_1000G_plink_stem $ldsc_snp_annotation_dir $sig_thresh $variant_annotation_enrichment_file $remove_coding
+
+    sig_thresh="0.05"
+    variant_annotation_enrichment_file=$variant_annotation_enrichment_dir"variant_enrichments_"${tissue_name}"_"${sig_thresh}"_remove_coding_summary.txt"
+    remove_coding="True"
+    sbatch variant_annotation_enrichment.sh $organized_borzoi_gtex_predictions${tissue_name}"_borzoi_estimates_w_uncertainty.txt" $genotype_1000G_plink_stem $ldsc_snp_annotation_dir $sig_thresh $variant_annotation_enrichment_file $remove_coding
+done
+fi
+
+
+# Minimal signal expected
+if false; then
+tail -n +2 $gtex_tissue_names_file | while read -r tissue_name; do
+    echo "Processing ${tissue_name}"
+
+    sig_thresh="0.05"
+    variant_annotation_enrichment_file=$variant_annotation_enrichment_dir"variant_cell_type_enrichments_"${tissue_name}"_"${sig_thresh}"_summary.txt"
+    sbatch variant_cell_type_annotation_enrichment.sh $organized_borzoi_gtex_predictions${tissue_name}"_borzoi_estimates_w_uncertainty.txt" $genotype_1000G_plink_stem $ldsc_hg19_cell_type_annotation_dir $sig_thresh $variant_annotation_enrichment_file
+
+done
 fi
 
 
@@ -271,5 +316,35 @@ fi
 
 
 
+if false; then
+source ~/.bashrc
+conda activate borzoi
+tissue_name="Muscle_Skeletal"
+python explore_genome_wide_predictions.py $organized_borzoi_gtex_predictions${tissue_name}"_borzoi_estimates_w_uncertainty.txt" $explore_genome_wide_pred_dir
+fi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# OLD
+
+# Organize results across parallel jobs
+if false; then
+sh organize_borzoi_predicted_eqtl_effects.sh ${borzoi_eqtl_effects_dir} $pip_threshold $processed_fm_eqtl_output_file $gtex_sample_attributes_file ${model_training_dir}"bootstrapped_models/"
+fi
 
 

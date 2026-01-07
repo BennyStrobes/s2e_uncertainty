@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --gpus 1                             # Request one core
-#SBATCH -t 0-65:20                         # Runtime in D-HH:MM format
+#SBATCH -t 0-0:20                         # Runtime in D-HH:MM format
 #SBATCH -p bch-gpu-pe                           # Partition to run in
 #SBATCH --mem=10GB  
 

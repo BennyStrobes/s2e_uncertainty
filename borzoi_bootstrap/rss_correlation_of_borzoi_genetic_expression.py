@@ -48,7 +48,7 @@ def extract_borzoi_effect_sizes(borzoi_effect_size_file, chrom_num, pc_genes):
 
 		if gene_name not in gene_obj:
 			gene_obj[gene_name] = []
-		gene_obj[gene_name].append((variant_name, mean_borzoi_effect, np.std(bs_borzoi_effects), bs_minor_count))
+		gene_obj[gene_name].append((variant_name, mean_borzoi_effect, np.std(bs_borzoi_effects), bs_minor_count, bs_borzoi_effects))
 
 
 	f.close()
@@ -74,7 +74,7 @@ def extract_eqtl_ss_for_this_chromosome(eqtl_ss_file, borzoi_effect_size_gene_ob
 			variant_id = data[1]
 			gene_id = data[0]
 			effect_size = float(data[-2])
-			std_err = float(data[-3])
+			std_err = float(data[-1])
 			if gene_id not in borzoi_effect_size_gene_obj:
 				continue
 			if gene_id not in eqtl_ss_obj:
@@ -102,13 +102,15 @@ def extract_borzoi_effects_for_gene(list_of_tuples):
 	betas = []
 	beta_ses = []
 	beta_mab = []
+	beta_bs = []
 	for tupler in list_of_tuples:
 		variants.append(tupler[0])
 		betas.append(tupler[1])
 		beta_ses.append(tupler[2])
 		beta_mab.append(tupler[3])
+		beta_bs.append(tupler[4])
 
-	return np.asarray(variants), np.asarray(betas), np.asarray(beta_ses), np.asarray(beta_mab)
+	return np.asarray(variants), np.asarray(betas), np.asarray(beta_ses), np.asarray(beta_mab), np.asarray(beta_bs)
 
 def extract_dictionary_list_of_hm3_rsids(hm3_snp_list_file):
 	f = open(hm3_snp_list_file)
@@ -200,6 +202,37 @@ def mean_ci_sem(x, alpha=0.05):
 	print(str(mean) + '\t' + str(ci_lower) + '\t' + str(ci_upper))
 	return
 
+def reorder_vector(new_variant_vec, old_effect_size_vec, old_variant_vec):
+	dicti = {}
+	for ii, variant_id in enumerate(old_variant_vec):
+		dicti[variant_id] = old_effect_size_vec[ii]
+
+	new_effect_size_vec = []
+	for variant_id in new_variant_vec:
+		new_effect_size_vec.append(dicti[variant_id])
+
+
+	return np.asarray(new_effect_size_vec)
+
+def reorder_matrix(new_variant_vec, old_effect_size_vec, old_variant_vec):
+	dicti = {}
+	for ii, variant_id in enumerate(old_variant_vec):
+		dicti[variant_id] = old_effect_size_vec[ii,:]
+
+	new_effect_size_vec = []
+	for variant_id in new_variant_vec:
+		new_effect_size_vec.append(dicti[variant_id])
+
+
+	return np.asarray(new_effect_size_vec)
+
+def rank_based_pvalue(bs_corry):
+	np_p_plus = (1 + np.sum(bs_corry >= 0))/(1+len(bs_corry))
+	np_p_minus = (1 + np.sum(bs_corry <=0))/(1+len(bs_corry))
+	borzoi_pvalues = 2.0*np.min((np_p_plus, np_p_minus))
+	return borzoi_pvalues
+
+
 
 ###########################
 # Command line args
@@ -210,11 +243,18 @@ eqtl_sumstats_dir = sys.argv[3]
 protein_coding_genes_file = sys.argv[4]
 genotype_1000G_plink_stem = sys.argv[5]
 hm3_snp_list_file = sys.argv[6]
+expr_correlation_summary_file = sys.argv[7]
+
+t = open(expr_correlation_summary_file,'w')
+t.write('gene_id\texpression_correlation\tmax_abs_eqtl_z\tsignal_variance\tnoise_variance\tmax_abs_borzoi\tcorrelation_bs_pvalue\n')
 
 
 # Loop through chromosomes
 vals = []
-for chrom_num in range(1,4):
+vals2 = []
+for chrom_num in range(1,5):
+
+	print(chrom_num)
 
 	# Extract dictionary list of hapmap3 rsids
 	hm3rsids = extract_dictionary_list_of_hm3_rsids(hm3_snp_list_file)
@@ -224,6 +264,7 @@ for chrom_num in range(1,4):
 	pc_genes = extract_dictionary_list_of_protein_coding_genes(protein_coding_genes_file, 'chr' + str(chrom_num))
 
 	# Extract borzoi effect sizes
+	#borzoi_effect_size_gene_obj = {}
 	borzoi_effect_size_gene_obj = extract_borzoi_effect_sizes(borzoi_effect_size_file, chrom_num, pc_genes)
 	
 	'''
@@ -290,7 +331,7 @@ for chrom_num in range(1,4):
 		gene_eqtl_variants, gene_eqtl_beta, gene_eqtl_beta_se = extract_eqtl_ss_for_gene(eqtl_ss_obj[geneid])
 
 		# Extract borzoi effects for gene
-		gene_borzoi_variants, gene_borzoi_effects, gene_borzoi_effect_se, gene_borzoi_effect_mab = extract_borzoi_effects_for_gene(borzoi_effect_size_gene_obj[geneid])
+		gene_borzoi_variants, gene_borzoi_effects, gene_borzoi_effect_se, gene_borzoi_effect_mab, gene_borzoi_effect_bs = extract_borzoi_effects_for_gene(borzoi_effect_size_gene_obj[geneid])
 
 
 		# Extract genotype matrix for eqtl variants
@@ -300,7 +341,8 @@ for chrom_num in range(1,4):
 		gene_eqtl_beta_se = gene_eqtl_beta_se[valid_eqtl_variants]
 		hm3_valid = []
 		for var in gene_eqtl_variants:
-			hm3_valid.append(gtex_variant_to_hm3_bool[var])
+			#hm3_valid.append(gtex_variant_to_hm3_bool[var])
+			hm3_valid.append(True)
 		hm3_valid = np.asarray(hm3_valid)
 		gene_eqtl_variants = gene_eqtl_variants[hm3_valid]
 		gene_eqtl_beta = gene_eqtl_beta[hm3_valid]
@@ -308,6 +350,7 @@ for chrom_num in range(1,4):
 		eqtl_variant_geno = eqtl_variant_geno[hm3_valid,:]
 		eqtl_variant_afs = eqtl_variant_afs[hm3_valid]
 		gene_eqtl_zeds = gene_eqtl_beta/gene_eqtl_beta_se
+		std_gene_eqtl_beta = gene_eqtl_beta*np.sqrt(2.0*eqtl_variant_afs*(1.0-eqtl_variant_afs))
 
 
 		gene_eqtl_zed = gene_eqtl_beta/gene_eqtl_beta_se
@@ -318,14 +361,114 @@ for chrom_num in range(1,4):
 		gene_borzoi_effects = gene_borzoi_effects[valid_borzoi_variants]
 		gene_borzoi_effect_se = gene_borzoi_effect_se[valid_borzoi_variants]
 		gene_borzoi_effect_mab = gene_borzoi_effect_mab[valid_borzoi_variants]
+		gene_borzoi_effect_bs = gene_borzoi_effect_bs[valid_borzoi_variants, :]
+		std_gene_borzoi_effects = gene_borzoi_effects*np.sqrt(2.0*borzoi_variant_afs*(1.0-borzoi_variant_afs))
+		std_gene_borzoi_effects_bs = np.transpose(np.transpose(gene_borzoi_effect_bs)*np.sqrt(2.0*borzoi_variant_afs*(1.0-borzoi_variant_afs)))
+
+		# Get overlaps
+		overlapping_variants = np.asarray(list(set(gene_eqtl_variants) & set(gene_borzoi_variants)))
+
+		if len(overlapping_variants) < 5:
+			continue
+
+
+		filtered_std_gene_borzoi_effects = reorder_vector(overlapping_variants, std_gene_borzoi_effects, gene_borzoi_variants)
+		filtered_gene_borzoi_effect_mab = reorder_vector(overlapping_variants, gene_borzoi_effect_mab, gene_borzoi_variants)
+		filtered_gene_borzoi_effects = reorder_vector(overlapping_variants, gene_borzoi_effects, gene_borzoi_variants)
+		filtered_std_gene_borzoi_effects_bs = reorder_matrix(overlapping_variants, std_gene_borzoi_effects_bs, gene_borzoi_variants)
+		filtered_std_gene_eqtl_beta = reorder_vector(overlapping_variants, std_gene_eqtl_beta, gene_eqtl_variants)
+		filtered_eqtl_zeds = reorder_vector(overlapping_variants, gene_eqtl_zeds, gene_eqtl_variants)
+
+		
+
+		overlapping_variant_geno, valid_overlapping_variants, overlapping_variant_afs = extract_genotype_matrix_for_subset_of_snps(G_obj_geno, G_obj_gtex_ids_dicti, overlapping_variants)
+
+		R_mat = np.corrcoef(overlapping_variant_geno)
+
+
+		'''
+		#zero_indices = (filtered_gene_borzoi_effect_mab != 0.0) 
+		zero_indices = (np.abs(filtered_gene_borzoi_effects) < .25)
+		#zero_indices = (filtered_gene_borzoi_effect_mab != 0.0) | (np.abs(filtered_gene_borzoi_effects) < .05)
+
+		thresh_std_gene_borzoi_effects = np.copy(filtered_std_gene_borzoi_effects)
+		thresh_std_gene_borzoi_effects[zero_indices] = 0.0
+		#if np.sum(zero_indices == False) == 0:
+			#continue
+
+		if np.std(thresh_std_gene_borzoi_effects) != 0.0:
+			corry_num = np.dot(thresh_std_gene_borzoi_effects, filtered_std_gene_eqtl_beta) 
+			corry_denom = np.sqrt(np.dot(np.dot(thresh_std_gene_borzoi_effects, R_mat), thresh_std_gene_borzoi_effects))
+			corry_num2 = np.dot(filtered_std_gene_borzoi_effects, filtered_std_gene_eqtl_beta) 
+			corry_denom2 = np.sqrt(np.dot(np.dot(filtered_std_gene_borzoi_effects, R_mat), filtered_std_gene_borzoi_effects))
+
+			corry = corry_num/corry_denom
+			corry2 = corry_num2/corry_denom2
+			vals.append(corry)
+			vals2.append(corry2)
+			print('#####')
+			print(corry)
+			mean_ci_sem(vals)
+			print(corry2)
+			mean_ci_sem(vals2)
+		'''
+
+
+		bs_marginal_effects = np.dot(R_mat, filtered_std_gene_borzoi_effects_bs)
+		same_sign = (np.all(bs_marginal_effects >= 0, axis=1) | np.all(bs_marginal_effects <= 0, axis=1))
+
+		signal = np.dot(np.dot(filtered_std_gene_borzoi_effects, R_mat), filtered_std_gene_borzoi_effects)
+		sampling_cov = np.cov(filtered_std_gene_borzoi_effects_bs)
+		noise = np.trace(np.dot(R_mat, sampling_cov))
+		signal_to_noise_ratio = signal/noise
+		#print(signal_to_noise_ratio)
+		
+		corry_num = np.dot(filtered_std_gene_borzoi_effects, filtered_std_gene_eqtl_beta) 
+		corry_denom = np.sqrt(np.dot(np.dot(filtered_std_gene_borzoi_effects, R_mat), filtered_std_gene_borzoi_effects))
+		corry = corry_num/corry_denom
+
+		max_abs_borzoi = np.max(np.abs(filtered_gene_borzoi_effects))
+		max_abs_eqtl_zed = np.max(np.abs(filtered_eqtl_zeds))
+
+		# bs distribution on correlation
+		bs_corry_num = filtered_std_gene_borzoi_effects_bs.T @ filtered_std_gene_eqtl_beta
+		Rb = R_mat @ filtered_std_gene_borzoi_effects_bs
+		bs_corry_denom = np.sqrt(np.sum(filtered_std_gene_borzoi_effects_bs * Rb, axis=0))
+		bs_corry = bs_corry_num / bs_corry_denom
+		bs_corry_pvalue = rank_based_pvalue(bs_corry)
+
+		t.write(geneid + '\t' + str(corry) + '\t' + str(max_abs_eqtl_zed) + '\t' + str(signal) + '\t' + str(noise) + '\t' + str(max_abs_borzoi) + '\t' + str(bs_corry_pvalue) + '\n')
+		t.flush()
+
+		if signal_to_noise_ratio > 2.0:
+			corry_num = np.dot(filtered_std_gene_borzoi_effects, filtered_std_gene_eqtl_beta) 
+			corry_denom = np.sqrt(np.dot(np.dot(filtered_std_gene_borzoi_effects, R_mat), filtered_std_gene_borzoi_effects))
+			corry = corry_num/corry_denom
+			print('#####')
+			print(signal_to_noise_ratio)
+			print(np.max(np.abs(filtered_gene_borzoi_effects)))
+			print(corry)
+			vals.append(corry)
+			mean_ci_sem(vals)
+
+		'''
+
+		# Extract genotype matrix for borzoi variants
+		borzoi_variant_geno, valid_borzoi_variants, borzoi_variant_afs = extract_genotype_matrix_for_subset_of_snps(G_obj_geno, G_obj_gtex_ids_dicti, gene_borzoi_variants)
+		gene_borzoi_variants = gene_borzoi_variants[valid_borzoi_variants]
+		gene_borzoi_effects = gene_borzoi_effects[valid_borzoi_variants]
+		gene_borzoi_effect_se = gene_borzoi_effect_se[valid_borzoi_variants]
+		gene_borzoi_effect_mab = gene_borzoi_effect_mab[valid_borzoi_variants]
 		std_gene_borzoi_effects = gene_borzoi_effects*np.sqrt(2.0*borzoi_variant_afs*(1.0-borzoi_variant_afs))
 
-		zero_indices = (gene_borzoi_effect_mab != 0.0) | (np.abs(gene_borzoi_effects) < .25)
-
-		zero_indices = (np.abs(gene_borzoi_effects) < .35)
+		zero_indices = (gene_borzoi_effect_mab != 0.0)
+		zero_indices = np.abs(gene_borzoi_effects) < .25
 
 		thresh_std_gene_borzoi_effects = np.copy(std_gene_borzoi_effects)
+		
 		thresh_std_gene_borzoi_effects[zero_indices] = 0.0
+		#if np.sum(zero_indices == False) == 0:
+			#continue
 
 		if eqtl_variant_geno.shape[0] < 1 or borzoi_variant_geno.shape[0] < 1:
 			continue
@@ -335,14 +478,20 @@ for chrom_num in range(1,4):
 
 
 		if np.std(thresh_std_gene_borzoi_effects) != 0.0:
-			borzoi_full_pred = np.dot(R_mat, thresh_std_gene_borzoi_effects)
-			corry = np.corrcoef(gene_eqtl_zeds,borzoi_full_pred)[0,1]
+			#borzoi_full_pred = np.dot(R_mat, thresh_std_gene_borzoi_effects)
+			#corry = np.corrcoef(gene_eqtl_zeds,borzoi_full_pred)[0,1]
+
+			pdb.set_trace()
+			corry_num = np.dot(thresh_std_gene_borzoi_effects, std_gene_eqtl_beta) 
+			corry_denom = np.dot(np.dot(thresh_std_gene_borzoi_effects, R_mat), thresh_std_gene_borzoi_effects)
+
 			#print(geneid + '\t' + 'borzoi_sig' + '\t' + str(corry))
 			vals.append(corry)
 			print('#####')
 			print(corry)
 			mean_ci_sem(vals)
-
+		'''
+t.close()
 
 
 
