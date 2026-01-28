@@ -74,3 +74,5 @@ borzoi_effects, borzoi_pvalues = extract_borzoi_data(genome_wide_pred_summary_fi
 # Plot histogram of p-values
 output_file = output_root + 'pvalue_histogram.png'
 plot_pvalue_histogram(borzoi_pvalues, output_file)
+
+print(output_file)

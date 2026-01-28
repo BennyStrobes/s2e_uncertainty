@@ -51,12 +51,40 @@ def extract_dictionary_list_of_fine_mapped_vg_pairs(processed_fm_eqtl_output_fil
 
 
 
+def create_mapping_from_ensamble_id_to_gene_tss_info(dist_to_tss_summary_file):
+	dicti = {}
+	f = open(dist_to_tss_summary_file)
+	for line in f:
+		line = line.rstrip()
+		data = line.split('\t')
+		chrom_num = data[0]
+		pos = float(data[1])
+		geneid = data[3].split('.')[0]
+		strand = data[5]
+
+		if geneid.startswith('ENSG') == False:
+			print('assumptione roronro')
+			pdb.set_trace()
+
+		if strand != '-' and strand != '+':
+			print('assumption oerororor')
+			pdb.set_trace()
+
+
+		dicti[geneid] = (chrom_num, pos, strand)
+	f.close()
+
+	return dicti
 
 
 
 full_gtex_target_file = sys.argv[1]
 processed_fm_eqtl_output_file = sys.argv[2]
 organized_borzoi_gtex_predictions = sys.argv[3]
+gene_tss_file = sys.argv[4]
+
+# First create mapping from ensamble id to gene (chrom, tss, strand)
+gene_tss_info = create_mapping_from_ensamble_id_to_gene_tss_info(gene_tss_file)
 
 
 # Extract target_names
@@ -104,7 +132,7 @@ for line in f:
 	data = line.split('\t')
 	if head_count == 0:
 		head_count = head_count + 1
-		t.write('\t'.join(data) + '\t' + 'mean_borzoi_log_sed' + '\t' + 'sdev_borzoi_log_sed' + '\t' + 'bs_borzoi_log_sed' + '\n')
+		t.write('\t'.join(data) + '\t' + 'mean_borzoi_log_sed' + '\t' + 'sdev_borzoi_log_sed' + '\t' + 'bs_borzoi_log_sed' + '\t' + 'dist_to_tss' + '\n')
 		continue
 	variant = data[3]
 	gene = data[7]
@@ -118,10 +146,37 @@ for line in f:
 	se_boot = np.std(bs_vals, ddof=1)
 
 
-	t.write('\t'.join(data) + '\t' + meany_string + '\t' + str(se_boot) + '\t' + bs_string + '\n')
+
+	gene = gene.split('.')[0]
+	if gene not in gene_tss_info:
+		distance = 'NA'
+		continue
+	else:
+		gene_chrom, gene_tss, gene_strand = gene_tss_info[gene]
+
+		var_pos = float(variant.split('_')[1])
+		var_chrom = variant.split('_')[0]
+
+		if var_chrom != gene_chrom:
+			print('chrom mismatch error')
+			continue
+
+		if gene_strand == '+':
+			distance = var_pos - gene_tss
+		elif gene_strand == '-':
+			distance = gene_tss - var_pos
+		else:
+			print('assumptioneorrornon on gene strand')
+			pdb.set_trace()
+
+
+
+
+
+	t.write('\t'.join(data) + '\t' + meany_string + '\t' + str(se_boot) + '\t' + bs_string + '\t' + str(distance) + '\n')
 
 f.close()
 t.close()
 
-
+print(organized_borzoi_gtex_predictions + 'cross_bootstrap_PIP_0.9_borzoi_pred_eqtl_effects_cross_tissue.txt')
 

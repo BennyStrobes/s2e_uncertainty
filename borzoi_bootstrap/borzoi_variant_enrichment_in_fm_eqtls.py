@@ -6,11 +6,80 @@ import gzip
 from scipy.stats import fisher_exact, norm
 import pyarrow.parquet as pq
 import pandas as pd
+import time
 
 
-def create_mapping_from_borzoi_sig_to_variant_id(borzoi_variant_effect_file_stem, borzoi_effect_file_bins,sig_thresh, eqtl_vg_pairs):
+
+def create_mapping_from_variant_id_to_eqtl_sig(fm_eqtl_results_file, eqtl_sumstats_dir, tissue_name):
+	# load in fm eqtl results
+	fm_variant_gene_pairs = {}
+	fm_variants = {}
+	f = open(fm_eqtl_results_file)
+	head_count = 0
+	for line in f:
+		line = line.rstrip()
+		data = line.split('\t')
+		if head_count == 0:
+			head_count = head_count + 1
+			continue
+
+		if data[0] != tissue_name:
+			continue
+		variant_id = data[3]
+		gene_id = data[7]
+		fm_variants[variant_id] = 0
+		fm_variant_gene_pairs[variant_id + ':' + gene_id] = 0
+	f.close()
+
+
+	# Load in non-sig eqtls
+	dicti = {}
+	for chrom_num in range(1,23):
+		print(chrom_num)
+		filer = eqtl_sumstats_dir + tissue_name + '.v10.allpairs.chr' + str(chrom_num) + '.parquet'
+		pf = pq.ParquetFile(filer)
+		for rg in range(pf.num_row_groups):
+			table = pf.read_row_group(rg)   # this is a chunk
+
+			# Process fields and print to output
+			array = np.asarray(table)
+
+			# Loop through snp-gene pairs 
+			nrows = array.shape[0]
+			for row_iter in range(nrows):
+				data = array[row_iter, :]
+				variant_id = data[1]
+				geneid = data[0]
+				af = float(data[3])
+				if af > .5:
+					af = 1.0 - af
+				if af < .05:
+					continue
+
+				sig_val = 0.0
+				if variant_id in fm_variants:
+					sig_val = 1.0
+				variant_info = variant_id.split('_')
+				alt_variant_id = variant_info[0] + '_' + variant_info[1] + '_' + variant_info[3] + '_' + variant_info[2] + '_' + variant_info[4]
+				if alt_variant_id in fm_variants:
+					sig_val = 1.0
+					pdb.set_trace()
+				if variant_id not in dicti:
+					dicti[variant_id] = sig_val
+				else:
+					if sig_val == 1.0:
+						dicti[variant_id] = sig_val
+
+	return dicti
+
+
+
+
+
+def create_mapping_from_borzoi_sig_to_variant_id(borzoi_variant_effect_file_stem, borzoi_effect_file_bins,sig_thresh):
 	dicti = {}
 
+	t1 = time.time()
 	for file_bin in borzoi_effect_file_bins:
 
 		borzoi_variant_effect_file = borzoi_variant_effect_file_stem + file_bin + '.txt'
@@ -41,27 +110,24 @@ def create_mapping_from_borzoi_sig_to_variant_id(borzoi_variant_effect_file_stem
 
 			variant_id = data[2]
 			gene_id = data[3]
-			vg_pair = variant_id + ':' + gene_id
+			var_gene_pair = variant_id + ':' + gene_id
 
-
-			variant_info = variant_id.split('_')
-			alt_variant_id = variant_info[0] + '_' + variant_info[1] + '_' + variant_info[3] + '_' + variant_info[2] + '_' + variant_info[4]
-			vg_pair2 = alt_variant_id + ':' + gene_id
-
-			if vg_pair not in eqtl_vg_pairs:
-				if vg_pair2 in eqtl_vg_pairs:
-					print('assumptioneoronrron')
-					pdb.set_trace()
-				continue
-
-			if variant_id not in dicti:
-				dicti[variant_id] = booler
+			if var_gene_pair not in dicti:
+				dicti[var_gene_pair] = booler
 			else:
+				print('assumptioneorrornorn')
+				pdb.set_trace()
 				if booler == 1.0:
-					dicti[variant_id] = booler
+					dicti[var_gene_pair] = booler
 			
 
 			counter = counter +1
+
+			if np.mod(counter, 1000000) == 0:
+				print(counter)
+				t2 = time.time()
+				print(t2-t1)
+				t1 = time.time()
 
 		f.close()
 
@@ -245,12 +311,56 @@ def enrichment_with_se(aa, bb, correction=0.0, alpha=0.05):
 		"p_value": float(p_value),
 	}
 
-def extract_eqtl_vg_pairs(eqtl_sumstats_dir, tissue_name):
+def extract_all_tissue_names(gtex_eqtl_tissue_names_file):
+	f = open(gtex_eqtl_tissue_names_file)
+	head_count = 0
+	arr = []
+	for line in f:
+		line = line.rstrip()
+		data = line.split('\t')
+		if head_count == 0:
+			head_count = head_count + 1
+			continue
+		arr.append(data[0])
+	f.close()
+
+	return np.asarray(arr)
+
+
+
+def extract_fm_eqtl_data(other_tissue_name, processed_fm_eqtl_output_file, eqtl_sumstats_dir, variant_gene_to_borzoi_sig):
+	# Extract fine-mapped variant gene pairs
+	fm_var_gene_pairs = {}
+	f = open(processed_fm_eqtl_output_file)
+	head_count = 0
+	for line in f:
+		line = line.rstrip()
+		data = line.split('\t')
+		if head_count == 0:
+			head_count = head_count + 1
+			continue
+		line_tissue = data[0]
+		if line_tissue != other_tissue_name:
+			continue
+		variant_id = data[3]
+		gene_id = data[7]
+		variant_info = variant_id.split('_')
+		alt_variant_id = variant_info[0] + '_' + variant_info[1] + '_' + variant_info[3] + '_' + variant_info[2] + '_' + variant_info[4]
+		
+		var_gene_pair1 = variant_id + ':' + gene_id
+		var_gene_pair2 = alt_variant_id + ':' + gene_id
+
+		fm_var_gene_pairs[var_gene_pair1] = 1
+		fm_var_gene_pairs[var_gene_pair2] = 1
+	f.close()
+
+
 	# Load in non-sig eqtls
-	dicti = {}
+	borzoi_sig_vector = []
+	fm_sig_vector = []
 	for chrom_num in range(1,23):
 		print(chrom_num)
-		filer = eqtl_sumstats_dir + tissue_name + '.v10.allpairs.chr' + str(chrom_num) + '.parquet'
+		filer = eqtl_sumstats_dir + other_tissue_name + '.v10.allpairs.chr' + str(chrom_num) + '.parquet'
 		pf = pq.ParquetFile(filer)
 		for rg in range(pf.num_row_groups):
 			table = pf.read_row_group(rg)   # this is a chunk
@@ -264,67 +374,72 @@ def extract_eqtl_vg_pairs(eqtl_sumstats_dir, tissue_name):
 				data = array[row_iter, :]
 				variant_id = data[1]
 				geneid = data[0]
+				af = float(data[3])
+				if af > .5:
+					af = 1.0 - af
+				if af < .05:
+					continue
 
-				#variant_info = variant_id.split('_')
-				#alt_variant_id = variant_info[0] + '_' + variant_info[1] + '_' + variant_info[3] + '_' + variant_info[2] + '_' + variant_info[4]
-				
-				vg_pair1 = variant_id + ':' + geneid
-				#vg_pair2 = alt_variant_id + ':' + geneid
-				dicti[vg_pair1] = 1
-				#dicti[vg_pair2] = 1
-	return dicti
+				eqtl_sig_val = 0.0
+				var_gene_pair1 = variant_id + ':' + geneid
+				variant_info = variant_id.split('_')
+				alt_variant_id = variant_info[0] + '_' + variant_info[1] + '_' + variant_info[3] + '_' + variant_info[2] + '_' + variant_info[4]
+				var_gene_pair2 = alt_variant_id + ':' + geneid
+				if var_gene_pair1 in fm_var_gene_pairs:
+					eqtl_sig_val = 1.0
+				if var_gene_pair2 in fm_var_gene_pairs:
+					eqtl_sig_val = 1.0
+
+				if var_gene_pair1 in variant_gene_to_borzoi_sig:
+					borzoi_sig_val = variant_gene_to_borzoi_sig[var_gene_pair1]
+					fm_sig_vector.append(eqtl_sig_val)
+					borzoi_sig_vector.append(borzoi_sig_val)
+				elif var_gene_pair2 in variant_gene_to_borzoi_sig:
+					borzoi_sig_val = variant_gene_to_borzoi_sig[var_gene_pair2]
+					fm_sig_vector.append(eqtl_sig_val)
+					borzoi_sig_vector.append(borzoi_sig_val)
+	fm_sig_vector = np.asarray(fm_sig_vector)
+	borzoi_sig_vector = np.asarray(borzoi_sig_vector)
+
+	return borzoi_sig_vector, fm_sig_vector
+
+
+
 
 
 ####################
 # Command line args
 ####################
-borzoi_variant_effect_file_stem = sys.argv[1]
-genotype_dir = sys.argv[2]
-snp_anno_dir = sys.argv[3]
-sig_thresh = float(sys.argv[4])
-variant_annotation_enrichment_file = sys.argv[5]
-remove_coding_boolean_string = sys.argv[6]
-eqtl_sumstats_dir = sys.argv[7]
-tissue_name = sys.argv[8]
-
-
-if remove_coding_boolean_string == 'True':
-	remove_coding_boolean = True
-elif remove_coding_boolean_string == 'False':
-	remove_coding_boolean = False
-else:
-	print('assumption erorno')
-	pdb.set_trace()
-
+borzoi_results_stem = sys.argv[1]
+processed_fm_eqtl_output_file = sys.argv[2]
+eqtl_sumstats_dir = sys.argv[3]
+gtex_eqtl_tissue_names_file = sys.argv[4]
+tissue_name = sys.argv[5]
+sig_thresh = float(sys.argv[6])
+variant_annotation_enrichment_file = sys.argv[7]
 
 borzoi_effect_file_bins = np.asarray(['0','1'])
+
+
+all_tissue_names = extract_all_tissue_names(gtex_eqtl_tissue_names_file)
+
 
 
 t = open(variant_annotation_enrichment_file,'w')
 t.write('annotation_name\tenrichment\tpvalue\tenrichment_95_lb\tenrichment_95_ub\taa\tbb\tcc\tdd\n')
 
-# Limit to variant-gene pairs tested in eqtl analysis
-eqtl_vg_pairs = extract_eqtl_vg_pairs(eqtl_sumstats_dir, tissue_name)
 
 
 # First extract mapping from variants to borzoi significnace (in at least one gene)
-variant_id_to_borzoi_sig = create_mapping_from_borzoi_sig_to_variant_id(borzoi_variant_effect_file_stem, borzoi_effect_file_bins, sig_thresh,eqtl_vg_pairs)
-
-# Now create mapping from rsid to variant id
-rsid_to_variantid = create_mapping_from_rsid_to_variant_id(genotype_dir)
+variant_gene_to_borzoi_sig = create_mapping_from_borzoi_sig_to_variant_id(borzoi_results_stem, borzoi_effect_file_bins, sig_thresh)
 
 
-# Extract annotations as matrices and sig as vector
-sig_vector, annotation_mat, annotation_names = extract_association_info(snp_anno_dir, variant_id_to_borzoi_sig, rsid_to_variantid, remove_coding_boolean)
+for other_tissue_name in all_tissue_names:
 
+	borzoi_sig_vector, fm_sig_vector = extract_fm_eqtl_data(other_tissue_name, processed_fm_eqtl_output_file, eqtl_sumstats_dir, variant_gene_to_borzoi_sig)
 
-for annotation_iter, annotation_name in enumerate(annotation_names):
-	if len(np.unique(annotation_mat[:,annotation_iter])) != 2:
-		annotation_mat[:,annotation_iter] = 1.0*(annotation_mat[:,annotation_iter] > np.mean(annotation_mat[:,annotation_iter]))
+	enrichment_obj = enrichment_with_se(borzoi_sig_vector, fm_sig_vector)
 
-
-	enrichment_obj = enrichment_with_se(sig_vector, annotation_mat[:,annotation_iter])
-
-	t.write(annotation_name + '\t' + str(enrichment_obj['enrichment']) + '\t' + str(enrichment_obj['p_value']) + '\t' + str(enrichment_obj['ci'][0]) + '\t' + str(enrichment_obj['ci'][1]) + '\t' + str(enrichment_obj['a']) + '\t' + str(enrichment_obj['b']) + '\t' + str(enrichment_obj['c']) + '\t' + str(enrichment_obj['d']) + '\n')
-
+	t.write(other_tissue_name + '\t' + str(enrichment_obj['enrichment']) + '\t' + str(enrichment_obj['p_value']) + '\t' + str(enrichment_obj['ci'][0]) + '\t' + str(enrichment_obj['ci'][1]) + '\t' + str(enrichment_obj['a']) + '\t' + str(enrichment_obj['b']) + '\t' + str(enrichment_obj['c']) + '\t' + str(enrichment_obj['d']) + '\n')
+	t.flush()
 t.close()

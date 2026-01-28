@@ -47,6 +47,7 @@ def create_mapping_from_tissue_name_to_target_indices(tissue_names, ordered_tiss
 borzoi_gtex_predictions = sys.argv[1]
 full_gtex_target_file = sys.argv[2]
 organized_borzoi_gtex_predictions = sys.argv[3]
+parallel_batch_name = sys.argv[4]
 
 # Command line args
 orig_bootstraps = np.arange(1,101)
@@ -55,7 +56,7 @@ for bs in orig_bootstraps:
 	bootstraps.append(bs)
 bootstraps = np.asarray(bootstraps)
 
-parallel_batch_names = np.asarray(['0'])
+parallel_batch_names = np.asarray([parallel_batch_name])
 
 # Extract target_names
 target_names, tissue_names = extract_ordered_target_names(full_gtex_target_file)
@@ -67,7 +68,7 @@ tissue_name_to_target_indices = create_mapping_from_tissue_name_to_target_indice
 # Open output handles
 t = []
 for ii, tissue_name in enumerate(ordered_tissues):
-	t.append(open(organized_borzoi_gtex_predictions + tissue_name + '_borzoi_estimates_w_uncertainty.txt','w'))
+	t.append(open(organized_borzoi_gtex_predictions + tissue_name + '_borzoi_estimates_w_uncertainty_' + parallel_batch_name + '.txt','w'))
 # Print headers
 for ii, tissue_name in enumerate(ordered_tissues):
 	t[ii].write('chrom_num\tvariant_position\tvariant_name\tgene_name\tborzoi_mean_effect\tborzoi_bootstrapped_mean_effect\n')

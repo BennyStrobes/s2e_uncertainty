@@ -8,7 +8,75 @@ import pyarrow.parquet as pq
 import pandas as pd
 
 
-def create_mapping_from_borzoi_sig_to_variant_id(borzoi_variant_effect_file_stem, borzoi_effect_file_bins,sig_thresh, eqtl_vg_pairs):
+
+
+def create_mapping_from_variant_id_to_eqtl_sig(fm_eqtl_results_file, eqtl_sumstats_dir, tissue_name):
+	# load in fm eqtl results
+	fm_variant_gene_pairs = {}
+	fm_variants = {}
+	f = open(fm_eqtl_results_file)
+	head_count = 0
+	for line in f:
+		line = line.rstrip()
+		data = line.split('\t')
+		if head_count == 0:
+			head_count = head_count + 1
+			continue
+
+		if data[0] != tissue_name:
+			continue
+		variant_id = data[3]
+		gene_id = data[7]
+		fm_variants[variant_id] = 0
+		fm_variant_gene_pairs[variant_id + ':' + gene_id] = 0
+	f.close()
+
+
+	# Load in non-sig eqtls
+	dicti = {}
+	for chrom_num in range(1,23):
+		print(chrom_num)
+		filer = eqtl_sumstats_dir + tissue_name + '.v10.allpairs.chr' + str(chrom_num) + '.parquet'
+		pf = pq.ParquetFile(filer)
+		for rg in range(pf.num_row_groups):
+			table = pf.read_row_group(rg)   # this is a chunk
+
+			# Process fields and print to output
+			array = np.asarray(table)
+
+			# Loop through snp-gene pairs 
+			nrows = array.shape[0]
+			for row_iter in range(nrows):
+				data = array[row_iter, :]
+				variant_id = data[1]
+				geneid = data[0]
+				af = float(data[3])
+				if af > .5:
+					af = 1.0 - af
+				if af < .05:
+					continue
+
+				sig_val = 0.0
+				if variant_id in fm_variants:
+					sig_val = 1.0
+				variant_info = variant_id.split('_')
+				alt_variant_id = variant_info[0] + '_' + variant_info[1] + '_' + variant_info[3] + '_' + variant_info[2] + '_' + variant_info[4]
+				if alt_variant_id in fm_variants:
+					sig_val = 1.0
+					pdb.set_trace()
+				if variant_id not in dicti:
+					dicti[variant_id] = sig_val
+				else:
+					if sig_val == 1.0:
+						dicti[variant_id] = sig_val
+
+	return dicti
+
+
+
+
+
+def create_mapping_from_borzoi_sig_to_variant_id(borzoi_variant_effect_file_stem, borzoi_effect_file_bins,sig_thresh):
 	dicti = {}
 
 	for file_bin in borzoi_effect_file_bins:
@@ -40,19 +108,6 @@ def create_mapping_from_borzoi_sig_to_variant_id(borzoi_variant_effect_file_stem
 
 
 			variant_id = data[2]
-			gene_id = data[3]
-			vg_pair = variant_id + ':' + gene_id
-
-
-			variant_info = variant_id.split('_')
-			alt_variant_id = variant_info[0] + '_' + variant_info[1] + '_' + variant_info[3] + '_' + variant_info[2] + '_' + variant_info[4]
-			vg_pair2 = alt_variant_id + ':' + gene_id
-
-			if vg_pair not in eqtl_vg_pairs:
-				if vg_pair2 in eqtl_vg_pairs:
-					print('assumptioneoronrron')
-					pdb.set_trace()
-				continue
 
 			if variant_id not in dicti:
 				dicti[variant_id] = booler
@@ -245,49 +300,18 @@ def enrichment_with_se(aa, bb, correction=0.0, alpha=0.05):
 		"p_value": float(p_value),
 	}
 
-def extract_eqtl_vg_pairs(eqtl_sumstats_dir, tissue_name):
-	# Load in non-sig eqtls
-	dicti = {}
-	for chrom_num in range(1,23):
-		print(chrom_num)
-		filer = eqtl_sumstats_dir + tissue_name + '.v10.allpairs.chr' + str(chrom_num) + '.parquet'
-		pf = pq.ParquetFile(filer)
-		for rg in range(pf.num_row_groups):
-			table = pf.read_row_group(rg)   # this is a chunk
-
-			# Process fields and print to output
-			array = np.asarray(table)
-
-			# Loop through snp-gene pairs 
-			nrows = array.shape[0]
-			for row_iter in range(nrows):
-				data = array[row_iter, :]
-				variant_id = data[1]
-				geneid = data[0]
-
-				#variant_info = variant_id.split('_')
-				#alt_variant_id = variant_info[0] + '_' + variant_info[1] + '_' + variant_info[3] + '_' + variant_info[2] + '_' + variant_info[4]
-				
-				vg_pair1 = variant_id + ':' + geneid
-				#vg_pair2 = alt_variant_id + ':' + geneid
-				dicti[vg_pair1] = 1
-				#dicti[vg_pair2] = 1
-	return dicti
-
 
 ####################
 # Command line args
 ####################
-borzoi_variant_effect_file_stem = sys.argv[1]
-genotype_dir = sys.argv[2]
-snp_anno_dir = sys.argv[3]
-sig_thresh = float(sys.argv[4])
-variant_annotation_enrichment_file = sys.argv[5]
-remove_coding_boolean_string = sys.argv[6]
-eqtl_sumstats_dir = sys.argv[7]
+fm_eqtl_results_file = sys.argv[1]
+eqtl_sumstats_dir= sys.argv[2]
+genotype_dir = sys.argv[3]
+snp_anno_dir = sys.argv[4]
+sig_thresh = float(sys.argv[5])
+variant_annotation_enrichment_file = sys.argv[6]
+remove_coding_boolean_string = sys.argv[7]
 tissue_name = sys.argv[8]
-
-
 if remove_coding_boolean_string == 'True':
 	remove_coding_boolean = True
 elif remove_coding_boolean_string == 'False':
@@ -297,25 +321,23 @@ else:
 	pdb.set_trace()
 
 
-borzoi_effect_file_bins = np.asarray(['0','1'])
+
+
 
 
 t = open(variant_annotation_enrichment_file,'w')
 t.write('annotation_name\tenrichment\tpvalue\tenrichment_95_lb\tenrichment_95_ub\taa\tbb\tcc\tdd\n')
 
-# Limit to variant-gene pairs tested in eqtl analysis
-eqtl_vg_pairs = extract_eqtl_vg_pairs(eqtl_sumstats_dir, tissue_name)
-
 
 # First extract mapping from variants to borzoi significnace (in at least one gene)
-variant_id_to_borzoi_sig = create_mapping_from_borzoi_sig_to_variant_id(borzoi_variant_effect_file_stem, borzoi_effect_file_bins, sig_thresh,eqtl_vg_pairs)
+variant_id_to_eqtl_sig = create_mapping_from_variant_id_to_eqtl_sig(fm_eqtl_results_file, eqtl_sumstats_dir, tissue_name)
 
 # Now create mapping from rsid to variant id
 rsid_to_variantid = create_mapping_from_rsid_to_variant_id(genotype_dir)
 
 
 # Extract annotations as matrices and sig as vector
-sig_vector, annotation_mat, annotation_names = extract_association_info(snp_anno_dir, variant_id_to_borzoi_sig, rsid_to_variantid, remove_coding_boolean)
+sig_vector, annotation_mat, annotation_names = extract_association_info(snp_anno_dir, variant_id_to_eqtl_sig, rsid_to_variantid, remove_coding_boolean)
 
 
 for annotation_iter, annotation_name in enumerate(annotation_names):

@@ -41,12 +41,36 @@ def create_mapping_from_tissue_name_to_target_indices(tissue_names, ordered_tiss
 
 	return mapping
 
+def create_mapping_from_ensamble_id_to_gene_tss_info(dist_to_tss_summary_file):
+	dicti = {}
+	f = open(dist_to_tss_summary_file)
+	for line in f:
+		line = line.rstrip()
+		data = line.split('\t')
+		chrom_num = data[0]
+		pos = float(data[1])
+		geneid = data[3].split('.')[0]
+		strand = data[5]
 
+		if geneid.startswith('ENSG') == False:
+			print('assumptione roronro')
+			pdb.set_trace()
+
+		if strand != '-' and strand != '+':
+			print('assumption oerororor')
+			pdb.set_trace()
+
+
+		dicti[geneid] = (chrom_num, pos, strand)
+	f.close()
+
+	return dicti
 
 # Command line args
 borzoi_gtex_predictions = sys.argv[1]
 full_gtex_target_file = sys.argv[2]
 organized_borzoi_gtex_predictions = sys.argv[3]
+
 
 # Command line args
 orig_bootstraps = np.arange(1,101)

@@ -21,37 +21,39 @@ def extract_dictionary_list_of_protein_coding_genes(protein_coding_genes_file, c
 	return dicti
 
 
-def extract_borzoi_effect_sizes(borzoi_effect_size_file, chrom_num, pc_genes):
+def extract_borzoi_effect_sizes(borzoi_effect_size_file_stem, chrom_num, pc_genes, borzoi_effect_size_file_parts):
 	chrom_string = 'chr' + str(chrom_num)
 	gene_obj = {}
 
-	f = open(borzoi_effect_size_file)
-	head_count = 0
-	for line in f:
-		line = line.rstrip()
-		data = line.split('\t')
-		if head_count == 0:
-			head_count = head_count+1
-			continue
-		if chrom_string != data[0]:
-			continue
+	for borzoi_effect_size_file_part in borzoi_effect_size_file_parts:
+		borzoi_effect_size_file = borzoi_effect_size_file_stem + borzoi_effect_size_file_part + '.txt'
+		f = open(borzoi_effect_size_file)
+		head_count = 0
+		for line in f:
+			line = line.rstrip()
+			data = line.split('\t')
+			if head_count == 0:
+				head_count = head_count+1
+				continue
+			if chrom_string != data[0]:
+				continue
 
-		variant_name = data[2]
-		gene_name = data[3]
-		if gene_name not in pc_genes:
-			continue
+			variant_name = data[2]
+			gene_name = data[3]
+			if gene_name not in pc_genes:
+				continue
 
-		mean_borzoi_effect = float(data[4])
-		bs_borzoi_effects = np.asarray(data[5].split(';')).astype(float)
+			mean_borzoi_effect = float(data[4])
+			bs_borzoi_effects = np.asarray(data[5].split(';')).astype(float)
 
-		bs_minor_count = np.min([np.sum(bs_borzoi_effects > 0.0), np.sum(bs_borzoi_effects < 0.0)])
+			bs_minor_count = np.min([np.sum(bs_borzoi_effects > 0.0), np.sum(bs_borzoi_effects < 0.0)])
 
-		if gene_name not in gene_obj:
-			gene_obj[gene_name] = []
-		gene_obj[gene_name].append((variant_name, mean_borzoi_effect, np.std(bs_borzoi_effects), bs_minor_count, bs_borzoi_effects))
+			if gene_name not in gene_obj:
+				gene_obj[gene_name] = []
+			gene_obj[gene_name].append((variant_name, mean_borzoi_effect, np.std(bs_borzoi_effects), bs_minor_count, bs_borzoi_effects))
 
 
-	f.close()
+		f.close()
 
 
 	return gene_obj
@@ -232,27 +234,41 @@ def rank_based_pvalue(bs_corry):
 	borzoi_pvalues = 2.0*np.min((np_p_plus, np_p_minus))
 	return borzoi_pvalues
 
+def rank_based_pvalue_array(bs_marginal_effects):
+	np_p_plus = (1 + np.sum(bs_marginal_effects >= 0,axis=1))/(1+bs_marginal_effects.shape[1])
+	np_p_minus = (1 + np.sum(bs_marginal_effects <=0,axis=1))/(1+bs_marginal_effects.shape[1])
+	borzoi_pvalues = 2.0*np.min((np_p_plus, np_p_minus),axis=0)
+	return borzoi_pvalues
+
+
+def compute_correlation(filtered_std_gene_borzoi_effects, filtered_std_gene_eqtl_beta, R_mat):
+	corry_num = np.dot(filtered_std_gene_borzoi_effects, filtered_std_gene_eqtl_beta) 
+	corry_denom = np.sqrt(np.dot(np.dot(filtered_std_gene_borzoi_effects, R_mat), filtered_std_gene_borzoi_effects))
+	corry = corry_num/corry_denom
+	return corry
 
 
 ###########################
 # Command line args
 ###########################
 tissue_name = sys.argv[1]
-borzoi_effect_size_file = sys.argv[2]
+borzoi_effect_size_file_stem = sys.argv[2]
 eqtl_sumstats_dir = sys.argv[3]
 protein_coding_genes_file = sys.argv[4]
 genotype_1000G_plink_stem = sys.argv[5]
 hm3_snp_list_file = sys.argv[6]
 expr_correlation_summary_file = sys.argv[7]
 
+borzoi_effect_size_file_parts = np.asarray(['0', '1'])
+
 t = open(expr_correlation_summary_file,'w')
-t.write('gene_id\texpression_correlation\tmax_abs_eqtl_z\tsignal_variance\tnoise_variance\tmax_abs_borzoi\tcorrelation_bs_pvalue\n')
+t.write('gene_id\texpression_correlation\tmax_abs_eqtl_z\tsignal_variance\tnoise_variance\tmax_abs_borzoi\tcorrelation_bs_pvalue\texpression_correlation_z_score_pred\texpression_correlation_ridge_predictor\tmin_borzoi_pvalue\texpression_correlation_uncertainty_denom\texpression_correlation_best_sig_marginal\texpression_correlation_sign_flip_weighted\texpression_correlation_low_ld_pred\n')
 
 
 # Loop through chromosomes
 vals = []
 vals2 = []
-for chrom_num in range(1,5):
+for chrom_num in range(1,9):
 
 	print(chrom_num)
 
@@ -265,8 +281,11 @@ for chrom_num in range(1,5):
 
 	# Extract borzoi effect sizes
 	#borzoi_effect_size_gene_obj = {}
-	borzoi_effect_size_gene_obj = extract_borzoi_effect_sizes(borzoi_effect_size_file, chrom_num, pc_genes)
-	
+	borzoi_effect_size_gene_obj = extract_borzoi_effect_sizes(borzoi_effect_size_file_stem, chrom_num, pc_genes, borzoi_effect_size_file_parts)
+
+
+
+
 	'''
 	tmp_file = '/lab-share/CHIP-Strober-e2/Public/ben/tmp/tmper.pkl'
 	f = open(tmp_file, "wb")
@@ -282,6 +301,8 @@ for chrom_num in range(1,5):
 	# Extract eqtl sumstats file for this chromosome
 	eqtl_ss_file = eqtl_sumstats_dir + tissue_name + '.v10.allpairs.chr' + str(chrom_num) + '.parquet'
 	eqtl_ss_obj = extract_eqtl_ss_for_this_chromosome(eqtl_ss_file, borzoi_effect_size_gene_obj)
+
+	pdb.set_trace()
 	'''
 	tmp_file = '/lab-share/CHIP-Strober-e2/Public/ben/tmp/tmper2.pkl'
 	f = open(tmp_file, "wb")
@@ -416,6 +437,12 @@ for chrom_num in range(1,5):
 
 		bs_marginal_effects = np.dot(R_mat, filtered_std_gene_borzoi_effects_bs)
 		same_sign = (np.all(bs_marginal_effects >= 0, axis=1) | np.all(bs_marginal_effects <= 0, axis=1))
+		bs_marginal_effects_pvalue = rank_based_pvalue_array(bs_marginal_effects)
+
+		np_p_plus = (1 + np.sum(filtered_std_gene_borzoi_effects_bs >= 0,axis=1))/(1+filtered_std_gene_borzoi_effects_bs.shape[1])
+		np_p_minus = (1 + np.sum(filtered_std_gene_borzoi_effects_bs <=0,axis=1))/(1+filtered_std_gene_borzoi_effects_bs.shape[1])
+		borzoi_pvalues = 2.0*np.min((np_p_plus, np_p_minus),axis=0)
+		
 
 		signal = np.dot(np.dot(filtered_std_gene_borzoi_effects, R_mat), filtered_std_gene_borzoi_effects)
 		sampling_cov = np.cov(filtered_std_gene_borzoi_effects_bs)
@@ -423,9 +450,8 @@ for chrom_num in range(1,5):
 		signal_to_noise_ratio = signal/noise
 		#print(signal_to_noise_ratio)
 		
-		corry_num = np.dot(filtered_std_gene_borzoi_effects, filtered_std_gene_eqtl_beta) 
-		corry_denom = np.sqrt(np.dot(np.dot(filtered_std_gene_borzoi_effects, R_mat), filtered_std_gene_borzoi_effects))
-		corry = corry_num/corry_denom
+		corry = compute_correlation(filtered_std_gene_borzoi_effects, filtered_std_gene_eqtl_beta, R_mat)
+
 
 		max_abs_borzoi = np.max(np.abs(filtered_gene_borzoi_effects))
 		max_abs_eqtl_zed = np.max(np.abs(filtered_eqtl_zeds))
@@ -437,19 +463,55 @@ for chrom_num in range(1,5):
 		bs_corry = bs_corry_num / bs_corry_denom
 		bs_corry_pvalue = rank_based_pvalue(bs_corry)
 
-		t.write(geneid + '\t' + str(corry) + '\t' + str(max_abs_eqtl_zed) + '\t' + str(signal) + '\t' + str(noise) + '\t' + str(max_abs_borzoi) + '\t' + str(bs_corry_pvalue) + '\n')
-		t.flush()
 
-		if signal_to_noise_ratio > 2.0:
-			corry_num = np.dot(filtered_std_gene_borzoi_effects, filtered_std_gene_eqtl_beta) 
-			corry_denom = np.sqrt(np.dot(np.dot(filtered_std_gene_borzoi_effects, R_mat), filtered_std_gene_borzoi_effects))
-			corry = corry_num/corry_denom
-			print('#####')
-			print(signal_to_noise_ratio)
-			print(np.max(np.abs(filtered_gene_borzoi_effects)))
-			print(corry)
-			vals.append(corry)
-			mean_ci_sem(vals)
+		filtered_std_gene_borzoi_effects_z_scored = np.mean(filtered_std_gene_borzoi_effects_bs,axis=1)/np.std(filtered_std_gene_borzoi_effects_bs,axis=1)
+		corry_z_score_pred = compute_correlation(filtered_std_gene_borzoi_effects_z_scored, filtered_std_gene_eqtl_beta, R_mat)
+
+
+
+		tau_sq = 1e-10
+		filtered_std_gene_borzoi_effects_ridged = np.mean(filtered_std_gene_borzoi_effects_bs,axis=1)*(tau_sq/(tau_sq + np.var(filtered_std_gene_borzoi_effects_bs,axis=1)))
+		corry_ridge_pred = compute_correlation(filtered_std_gene_borzoi_effects_ridged, filtered_std_gene_eqtl_beta, R_mat)
+
+
+
+		RW = R_mat @ filtered_std_gene_borzoi_effects_bs                  # (K, B)
+		sampled_variances = np.sum(filtered_std_gene_borzoi_effects_bs * RW, axis=0)
+		total_var = np.mean(sampled_variances)
+
+		corry_num = np.dot(filtered_std_gene_borzoi_effects, filtered_std_gene_eqtl_beta) 
+		corry_uncertainty_den = corry_num/np.sqrt(total_var)
+
+
+		# Best sig marginal
+		best_sig_marginal = np.zeros(bs_marginal_effects.shape[0])
+		if np.min(bs_marginal_effects_pvalue) < .05:
+			indices = bs_marginal_effects_pvalue < .05
+			best_sig_marginal[indices] = filtered_std_gene_borzoi_effects[indices]
+		corry_best_sig_marginal_pred = compute_correlation(best_sig_marginal, filtered_std_gene_eqtl_beta, R_mat)
+
+
+		variances = np.var(filtered_std_gene_borzoi_effects_bs,axis=1)
+		squared_means = np.square(filtered_std_gene_borzoi_effects)
+		weights = 1.0/(1.0 + (variances/squared_means))
+		corry_sign_flip_weighted = compute_correlation(filtered_std_gene_borzoi_effects*weights, filtered_std_gene_eqtl_beta, R_mat)
+
+
+
+		indices = (borzoi_pvalues < .025) & (np.partition(np.abs(R_mat), -2, axis=0)[-2, :] < .8)
+		low_ld_pred = np.zeros(bs_marginal_effects.shape[0])
+		low_ld_pred[indices] = filtered_std_gene_borzoi_effects[indices]
+		corry_low_ld_pred = compute_correlation(low_ld_pred, filtered_std_gene_eqtl_beta, R_mat)
+
+
+
+		'''
+		if geneid == 'ENSG00000163466.16' or geneid == 'ENSG00000069020.19' or geneid == 'ENSG00000152942.19' or geneid == 'ENSG00000165055.16':
+			pdb.set_trace()
+		'''
+
+		t.write(geneid + '\t' + str(corry) + '\t' + str(max_abs_eqtl_zed) + '\t' + str(signal) + '\t' + str(noise) + '\t' + str(max_abs_borzoi) + '\t' + str(bs_corry_pvalue) + '\t' + str(corry_z_score_pred) + '\t' + str(corry_ridge_pred) + '\t' + str(np.min(borzoi_pvalues)) + '\t' + str(corry_uncertainty_den) + '\t' + str(corry_best_sig_marginal_pred) + '\t' + str(corry_sign_flip_weighted) + '\t' + str(corry_low_ld_pred) + '\n')
+		t.flush()
 
 		'''
 
