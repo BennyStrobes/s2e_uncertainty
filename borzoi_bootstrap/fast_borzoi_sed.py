@@ -382,6 +382,14 @@ def main():
 		help="Average forward and reverse complement predictions [Default: %default]",
 	)
 	parser.add_option(
+		"--windowspan",
+		dest="windowspan",
+		default=False,
+		action="store_true",
+		help="Average forward and reverse complement predictions [Default: %default]",
+	)
+
+	parser.add_option(
 		"--shifts",
 		dest="shifts",
 		default="0",
@@ -497,7 +505,7 @@ def main():
 	else:
 		targets_df = pd.read_csv(options.targets_file, sep="\t", index_col=0)
 
-	# prep strand
+	# prep st jrand
 	targets_strand_df = dataset.targets_prep_strand(targets_df)
 
 	# set strand pairs (using new indexing)
@@ -679,6 +687,10 @@ def main():
 					ref_preds_gene = ref_preds[gene_slice]
 					alt_preds_gene = alt_preds[gene_slice]
 
+					if options.windowspan:
+						ref_preds_gene = np.copy(ref_preds)
+						alt_preds_gene = np.copy(alt_preds)
+
 					# slice relevant strand targets
 					if gene_strand[gene_id] == "+":
 						ref_preds_gene = ref_preds_gene[..., pos_gene_strand_mask]
@@ -686,6 +698,8 @@ def main():
 					else:
 						ref_preds_gene = ref_preds_gene[..., neg_gene_strand_mask]
 						alt_preds_gene = alt_preds_gene[..., neg_gene_strand_mask]
+
+
 
 					# sum across length
 					ref_preds_sum = ref_preds_gene.sum(axis=0)

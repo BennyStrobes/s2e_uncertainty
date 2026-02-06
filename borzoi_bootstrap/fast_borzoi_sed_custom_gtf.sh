@@ -13,9 +13,10 @@ export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
 output_dir="${1}"
 vcf_input_file="${2}"
 borzoi_training_dir="${3}"
+gtf_file="${4}"
 
 echo $output_dir
 
 date
-python "fast_borzoi_sed.py" -o ${output_dir} --rc --stats logSED,refLog,altLog -t ${borzoi_training_dir}"data0/targets.txt" ${borzoi_training_dir}"params.json" ${borzoi_training_dir}"train/model_best.h5" $vcf_input_file
+python "fast_borzoi_sed.py" -o ${output_dir} --rc --stats logSED,refLog,altLog -t ${borzoi_training_dir}"data0/targets.txt" -g ${gtf_file} ${borzoi_training_dir}"params.json" ${borzoi_training_dir}"train/model_best.h5" $vcf_input_file
 date

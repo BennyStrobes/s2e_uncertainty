@@ -33,6 +33,9 @@ from baskerville.gene import Transcriptome
 from baskerville import dataset
 from baskerville import seqnn
 from baskerville import vcf as bvcf
+from baskerville import dna
+import tensorflow as tf
+
 
 """
 borzoi_sed.py
@@ -40,6 +43,304 @@ borzoi_sed.py
 Compute SNP Expression Difference (SED) scores for SNPs in a VCF file,
 relative to gene exons in a GTF file.
 """
+
+# =====================================================
+# 1. Precompute a 256x4 lookup table ONCE.
+# =====================================================
+
+DNA_LUT = np.zeros((256, 4), dtype=np.float16)
+
+# A,C,G,T maps
+DNA_LUT[ord("A")] = [1, 0, 0, 0]
+DNA_LUT[ord("C")] = [0, 1, 0, 0]
+DNA_LUT[ord("G")] = [0, 0, 1, 0]
+DNA_LUT[ord("T")] = [0, 0, 0, 1]
+
+# lowercase (optional if input sometimes lowercase)
+DNA_LUT[ord("a")] = [1, 0, 0, 0]
+DNA_LUT[ord("c")] = [0, 1, 0, 0]
+DNA_LUT[ord("g")] = [0, 0, 1, 0]
+DNA_LUT[ord("t")] = [0, 0, 0, 1]
+
+# N → uniform
+DNA_LUT[ord("N")] = [0.25, 0.25, 0.25, 0.25]
+DNA_LUT[ord("n")] = [0.25, 0.25, 0.25, 0.25]
+
+
+
+mapping2 = {}
+mapping2['A'] = [1, 0, 0, 0]
+mapping2['C'] = [0, 1, 0, 0]
+mapping2['G'] = [0, 0, 1, 0]
+mapping2['T'] = [0, 0, 0, 1]
+mapping2['a'] = [1, 0, 0, 0]
+mapping2['c'] = [0, 1, 0, 0]
+mapping2['g'] = [0, 0, 1, 0]
+mapping2['t'] = [0, 0, 0, 1]
+mapping2['N'] = [0.25, 0.25, 0.25, 0.25]
+mapping2['n'] = [0.25, 0.25, 0.25, 0.25]
+
+
+def dna_1hot_ultrafast(seq, seq_len=None):
+	"""Fastest version assuming n_uniform=True always."""
+	
+	L = len(seq)
+
+	# --- Center trim/pad ---
+	if seq_len is None:
+		seq_len = L
+		seq_start = 0
+	else:
+		if seq_len <= L:
+			trim = (L - seq_len) // 2
+			seq = seq[trim : trim + seq_len]
+			L = seq_len
+			seq_start = 0
+		else:
+			seq_start = (seq_len - L) // 2
+
+	# --- allocate output ---
+	out = np.zeros((seq_len, 4), dtype=np.float16)
+
+	if L == 0:
+		return out
+
+	region = slice(seq_start, seq_start + L)
+
+	# Convert to uint8 view directly — NO .upper(), NO masks
+	seq_bytes = np.frombuffer(seq.encode('ascii'), dtype=np.uint8)
+
+	# Lookup all rows at once
+	out[region] = DNA_LUT[seq_bytes]
+
+	return out
+
+
+
+def dna_1hot_fast(
+	seq: str, seq_len: int = None, n_uniform: bool = False, n_sample: bool = False
+):
+	"""Vectorized version of dna_1hot."""
+	# -------------------------
+	# 1. Handle length / centering
+	# -------------------------
+	if seq_len is None:
+		seq_len = len(seq)
+		seq_start = 0
+	else:
+		if seq_len <= len(seq):
+			# trim the sequence (centered)
+			seq_trim = (len(seq) - seq_len) // 2
+			seq = seq[seq_trim : seq_trim + seq_len]
+			seq_start = 0
+		else:
+			# pad (centered) -> string stays same, we shift where we write
+			seq_start = (seq_len - len(seq)) // 2
+
+	seq = seq.upper()
+	L = len(seq)  # length after optional trimming
+
+	# -------------------------
+	# 2. Allocate output
+	# -------------------------
+	if n_uniform:
+		seq_code = np.zeros((seq_len, 4), dtype="float16")
+	else:
+		seq_code = np.zeros((seq_len, 4), dtype="bool")
+
+	if L == 0:
+		return seq_code
+
+	# slice in seq_code that corresponds to the original sequence
+	region = slice(seq_start, seq_start + L)
+	region_view = seq_code[region]
+
+	# -------------------------
+	# 3. Vectorized base mapping
+	# -------------------------
+	# Turn the sequence into a NumPy array of bytes
+	bases = np.frombuffer(seq.encode("ascii"), dtype="S1")
+
+	mask_A = bases == b"A"
+	mask_C = bases == b"C"
+	mask_G = bases == b"G"
+	mask_T = bases == b"T"
+
+	# Set A/C/G/T positions
+	region_view[mask_A, 0] = 1
+	region_view[mask_C, 1] = 1
+	region_view[mask_G, 2] = 1
+	region_view[mask_T, 3] = 1
+
+	# -------------------------
+	# 4. Handle N / other bases
+	# -------------------------
+	valid_mask = mask_A | mask_C | mask_G | mask_T
+	n_mask = ~valid_mask
+
+	if n_uniform:
+		# represent N's as 0.25 across A/C/G/T
+		region_view[n_mask, :] = 0.25
+	elif n_sample:
+		# randomly sample a base for each N
+		n_idx = np.where(n_mask)[0]
+		if n_idx.size > 0:
+			# choose a random column 0..3 for each N
+			rand_cols = np.random.randint(0, 4, size=n_idx.size)
+			region_view[n_idx, rand_cols] = 1
+
+	return seq_code
+
+
+def dna_length_1hot(seq, length):
+	"""Adjust the sequence length and compute
+	a 1hot coding."""
+
+	if length < len(seq):
+		# trim the sequence
+		seq_trim = (len(seq) - length) // 2
+		seq = seq[seq_trim : seq_trim + length]
+
+	elif length > len(seq):
+		# extend with N's
+		nfront = (length - len(seq)) // 2
+		nback = length - len(seq) - nfront
+		seq = "N" * nfront + seq + "N" * nback
+
+	# n_uniform required to avoid different
+	#   random nucleotides for each allele
+	#seq_1hot_orig = dna.dna_1hot(seq, n_uniform=True)
+	seq_1hot = dna_1hot_fast(seq, n_uniform=True)
+
+
+	return seq_1hot, seq
+
+def snp_seq1(snp, seq_len, genome_open):
+	"""Produce one hot coded sequences for a SNP.
+
+	Attrs:
+		snp [SNP] :
+		seq_len (int) : sequence length to code
+		genome_open (File) : open genome FASTA file
+
+	Return:
+		seq_vecs_list [array] : list of one hot coded sequences surrounding the
+		SNP
+	"""
+	left_len = seq_len // 2 - 1
+	right_len = seq_len // 2
+
+	# initialize one hot coded vector list
+	seq_vecs_list = []
+
+	# specify positions in GFF-style 1-based
+	seq_start = snp.pos - left_len
+	seq_end = snp.pos + right_len + max(0, len(snp.ref_allele) - snp.longest_alt())
+
+	# extract sequence as BED style
+	if seq_start < 0:
+		seq = "N" * (1 - seq_start) + genome_open.fetch(snp.chr, 0, seq_end).upper()
+	else:
+		seq = genome_open.fetch(snp.chr, seq_start - 1, seq_end).upper()
+
+	# extend to full length
+	if len(seq) < seq_len:
+		seq += "N" * (seq_len - len(seq))
+
+	# verify that ref allele matches ref sequence
+	seq_ref = seq[left_len : left_len + len(snp.ref_allele)]
+	ref_found = True
+	if seq_ref != snp.ref_allele:
+		# search for reference allele in alternatives
+		ref_found = False
+
+		# for each alternative allele
+		for alt_al in snp.alt_alleles:
+			# grab reference sequence matching alt length
+			seq_ref_alt = seq[left_len : left_len + len(alt_al)]
+			if seq_ref_alt == alt_al:
+				# found it!
+				ref_found = True
+
+				# warn user
+				print(
+					"WARNING: %s - alt (as opposed to ref) allele matches reference genome; changing reference genome to match."
+					% (snp.rsid),
+					file=sys.stderr,
+				)
+
+				# remove alt allele and include ref allele
+				seq = seq[:left_len] + snp.ref_allele + seq[left_len + len(alt_al) :]
+				break
+
+	if not ref_found:
+		print(
+			"WARNING: %s - reference genome does not match any allele" % snp.rsid,
+			file=sys.stderr,
+		)
+
+	else:
+		# one hot code ref allele
+		seq_vecs_ref = dna_1hot_ultrafast(seq)
+
+		seq_vecs_list.append(seq_vecs_ref)
+
+		for alt_al in snp.alt_alleles:
+			# remove ref allele and include alt allele
+			seq_alt = seq[:left_len] + alt_al + seq[left_len + len(snp.ref_allele) :]
+
+			# one hot code
+			seq_vecs_alt = np.copy(seq_vecs_ref)
+			seq_vecs_alt[left_len,:] = mapping2[alt_al]
+			#seq_vecs_alt = dna_1hot_ultrafast(seq_alt)
+			'''
+			if np.array_equal(seq_vecs_alt, seq_vecs_alt_orig) == False:
+				print('assumption eroeoror')
+				pdb.set_trace()
+			'''
+			seq_vecs_list.append(seq_vecs_alt)
+
+
+	return seq_vecs_list
+
+
+def untransform_preds(preds, targets_df, single_c, unscale=False, unclip=True):
+	"""Undo the squashing transformations performed for the tasks.
+
+	Args:
+	  preds (np.array): Predictions LxT.
+	  targets_df (pd.DataFrame): Targets information table.
+
+	Returns:
+	  preds (np.array): Untransformed predictions LxT.
+	"""
+	# clip soft
+	if unclip:
+		if np.any(preds > single_c):
+			cs = np.expand_dims(np.array(targets_df.clip_soft), axis=0)
+			preds_unclip = cs - 1 + (preds - cs + 1) ** 2
+			preds = np.where(preds > cs, preds_unclip, preds)
+
+	# sqrt
+	#sqrt_mask = np.array([ss.find("_sqrt") != -1 for ss in targets_df.sum_stat])
+	#preds[:, sqrt_mask] = -1 + (preds[:, sqrt_mask] + 1) ** 2  # (4 / 3)
+	np.add(preds, 1, out=preds)      # preds = preds + 1
+	np.square(preds, out=preds)      # preds = preds ** 2
+	preds -= 1 
+
+	# scale
+	if unscale:
+		scale = np.expand_dims(np.array(targets_df.scale), axis=0)
+		preds = preds / scale
+
+	return preds
+
+
+def onehot_rc(x):
+	# x: (B, L, 4) in A,C,G,T order
+	return x[:, ::-1, :][:, :, [3, 2, 1, 0]]
+
+
 
 ################################################################################
 # main
@@ -68,9 +369,9 @@ def main():
 	)
 	parser.add_option(
 		"-o",
-		dest="out_dir",
+		dest="output_file",
 		default="sed",
-		help="Output directory for tables and plots [Default: %default]",
+		help="Output file [Default: %default]",
 	)
 	parser.add_option(
 		"-p",
@@ -126,6 +427,12 @@ def main():
 		action="store_true",
 	)
 	parser.add_option(
+		"--batch_size",
+		dest="batch_size",
+		default=10,
+	)
+
+	parser.add_option(
 		"--no_unclip",
 		dest="no_unclip",
 		default=False,
@@ -176,8 +483,7 @@ def main():
 	else:
 		parser.error("Must provide parameters/model, VCF, and genes GTF")
 
-	if not os.path.isdir(options.out_dir):
-		os.mkdir(options.out_dir)
+
 
 	options.shifts = [int(shift) for shift in options.shifts.split(",")]
 	options.sed_stats = options.sed_stats.split(",")
@@ -197,7 +503,7 @@ def main():
 	else:
 		targets_df = pd.read_csv(options.targets_file, sep="\t", index_col=0)
 
-	# prep strand
+	# prep st jrand
 	targets_strand_df = dataset.targets_prep_strand(targets_df)
 
 	# set strand pairs (using new indexing)
@@ -218,6 +524,33 @@ def main():
 	model_stride = seqnn_model.model_strides[0]
 	out_seq_len = seqnn_model.target_lengths[0] * model_stride
 
+	reverse_model = False
+	if np.random.rand() < 0.5:
+		reverse_model = True
+
+	print('reverse model')
+	print(reverse_model)
+
+	###***
+	# Grab underlying Keras model
+	if seqnn_model.ensemble is not None:
+		keras_model = seqnn_model.ensemble
+	else:
+		keras_model = seqnn_model.model
+
+	# Warmup
+	dummy = tf.zeros((1, seq_len, 4), dtype=tf.float32)
+	_ = keras_model(dummy)
+
+	@tf.function(jit_compile=True)
+	def predict_step_tf(x):
+		# x: (batch, seq_len, 4)
+		x = tf.cast(x, tf.float32)
+		preds = keras_model(x, training=False)
+		return preds
+	###***
+
+	
 	#################################################################
 	# read SNPs / genes
 
@@ -228,7 +561,7 @@ def main():
 		worker_bounds = np.linspace(0, num_snps, options.processes + 1, dtype="int")
 
 		# read SNPs form VCF
-		snps = bvcf.vcf_snps(
+		snps_all = bvcf.vcf_snps(
 			vcf_file,
 			start_i=worker_bounds[worker_index],
 			end_i=worker_bounds[worker_index + 1],
@@ -236,7 +569,9 @@ def main():
 
 	else:
 		# read SNPs form VCF
-		snps = bvcf.vcf_snps(vcf_file)
+		#snps_all = bvcf.vcf_snps(vcf_file)
+		total_n_snps_in_file = bvcf.vcf_count(vcf_file)
+
 
 	# read genes
 	transcriptome = Transcriptome(options.genes_gtf)
@@ -244,131 +579,148 @@ def main():
 	for gene_id, gene in transcriptome.genes.items():
 		gene_strand[gene_id] = gene.strand
 
-	# map SNP sequences to gene positions
-	snpseq_gene_slice = map_snpseq_genes(
-		snps, out_seq_len, transcriptome, model_stride, options.span
-	)
-
-	# remove SNPs w/o genes
-	num_snps_pre = len(snps)
-	snp_gene_mask = np.array([len(sgs) > 0 for sgs in snpseq_gene_slice])
-	snps = [snps[si] for si in range(num_snps_pre) if snp_gene_mask[si]]
-	snpseq_gene_slice = [
-		snpseq_gene_slice[si] for si in range(num_snps_pre) if snp_gene_mask[si]
-	]
-	num_snps = len(snps)
-
-	#################################################################
-	# setup output
-
-	sed_out = initialize_output_h5(
-		options.out_dir, options.sed_stats, snps, snpseq_gene_slice, targets_strand_df
-	)
-
 	#################################################################
 	# predict SNP scores, write output
 
 	# create SNP seq generator
 	genome_open = pysam.Fastafile(options.genome_fasta)
 
-	# SNP/gene index
-	xi = 0
+	# Precomputed quantities (no need to recompute for each snp)
+	pos_gene_strand_mask = targets_df.strand != "-"
+	neg_gene_strand_mask = targets_df.strand != "+"
 
-	# Speed up thoughts
-	# batch predictions
-	# Make sure there is an overlapping gene prior to testing variant.
-	# for each SNP sequence
-	for si, snp in tqdm(enumerate(snps), total=len(snps)):
-		# get SNP sequences
-		snp_1hot_list = bvcf.snp_seq1(snp, seq_len, genome_open)
-		snps_1hot = np.array(snp_1hot_list)
+	cs = np.expand_dims(np.array(targets_df.clip_soft), axis=0)
+	if len(np.unique(cs)) != 1:
+		print('clip soft assumption error: assumed all were the same. need to fix')
+		pdb.set_trace()
+	single_c = np.unique(cs[0])
 
-		# get predictions
-		#t1 = time.time()
-		if params_train["batch_size"] == 1:
-			ref_preds = seqnn_model(snps_1hot[:1])[0]
-			alt_preds = seqnn_model(snps_1hot[1:])[0]
-		else:
-			snp_preds = seqnn_model(snps_1hot)
-			ref_preds, alt_preds = snp_preds[0], snp_preds[1]
-		#t2 = time.time()
-		#print(t2-t1)
+	sqrt_mask = np.array([ss.find("_sqrt") != -1 for ss in targets_df.sum_stat])
+	if np.sum(sqrt_mask != True) > 0:
+		print('Assumed all outputs were sqrt. need to fix for this input data')
+		pdb.set_trace()
+
+	B = options.batch_size
+
+	t = open(options.output_file,'w')
+	t.write('snp_chrom\tsnp_pos\tsnp\tgene\tlogSed\tlogRef\tlogAlt\n')
 
 
+	chunk_size = 10_000
+	orig_time = time.time()
+	for jj in range(0, total_n_snps_in_file, chunk_size):
+
+		print('Iteration ' + str(jj))
+		tmp_time = time.time()
+		run_time = tmp_time - orig_time
+		if jj > 10000:
+			print('runtime (seconds): ' + str(run_time/chunk_size))
+		orig_time = time.time()
+
+		snps = bvcf.vcf_snps(vcf_file, start_i=jj, end_i=np.min([jj+chunk_size, total_n_snps_in_file]))
+		#snps = snps_all[jj : jj + chunk_size]
+
+		# map SNP sequences to gene positions
+		print('mapping')
+		snpseq_gene_slice = map_snpseq_genes(
+			snps, out_seq_len, transcriptome, model_stride, options.span
+		)
+
+		# remove SNPs w/o genes
+		print('remove snps w/o genes')
+		num_snps_pre = len(snps)
+		snp_gene_mask = np.array([len(sgs) > 0 for sgs in snpseq_gene_slice])
+		snps = [snps[si] for si in range(num_snps_pre) if snp_gene_mask[si]]
+		snpseq_gene_slice = [
+			snpseq_gene_slice[si] for si in range(num_snps_pre) if snp_gene_mask[si]
+		]
+
+		# SNP/gene index
+		#for si, snp in tqdm(enumerate(snps), total=len(snps)):
+		for ii in range(0, len(snps), options.batch_size):
+			if np.mod(ii, 1000) == 0 and ii > 2000:
+				t.flush()
+			# Get batch of snps
+			snp_batch = snps[ii : ii + options.batch_size]
 
 
-		# untransform predictions
-		if options.targets_file is not None:
-			if not options.no_untransform:
-				if options.untransform_old:
-					ref_preds = dataset.untransform_preds1(ref_preds, targets_df, unclip=not options.no_unclip)
-					alt_preds = dataset.untransform_preds1(alt_preds, targets_df, unclip=not options.no_unclip)
-				else:
-					ref_preds = dataset.untransform_preds(ref_preds, targets_df, unclip=not options.no_unclip)
-					alt_preds = dataset.untransform_preds(alt_preds, targets_df, unclip=not options.no_unclip)
+			###**
+			# Preallocate 1-hot batch
+			n_in_batch = len(snp_batch)
+			snps_1hot = np.zeros((2 * B, seq_len, 4), dtype=np.float32)
 
-		if options.bedgraph:
-			write_bedgraph_snp(
-				snps[si], ref_preds, alt_preds, options.out_dir, model_stride
-			)
+			for idx, snp in enumerate(snp_batch):
+				ref_1hot, alt_1hot = snp_seq1(snp, seq_len, genome_open)
+				snps_1hot[2 * idx] = ref_1hot
+				snps_1hot[2 * idx + 1] = alt_1hot
 
+			if reverse_model:
+				snps_1hot = onehot_rc(snps_1hot)
 
-		# for each overlapping gene
-		for gene_id, gene_slice in snpseq_gene_slice[si].items():
-			if len(gene_slice) > len(set(gene_slice)):
-				print("WARNING: %d %s has overlapping bins" % (si, gene_id))
+			# To TF once
+			snps_1hot_tf = tf.convert_to_tensor(snps_1hot, dtype=tf.float32)
 
-			# slice gene positions
-			ref_preds_gene = ref_preds[gene_slice]
-			alt_preds_gene = alt_preds[gene_slice]
+			# Fast compiled forward pass
+			snp_preds = predict_step_tf(snps_1hot_tf).numpy()
 
-			# slice relevant strand targets
-			if gene_strand[gene_id] == "+":
-				gene_strand_mask = targets_df.strand != "-"
-			else:
-				gene_strand_mask = targets_df.strand != "+"
-			ref_preds_gene = ref_preds_gene[..., gene_strand_mask]
-			alt_preds_gene = alt_preds_gene[..., gene_strand_mask]
+			if reverse_model:
+				snp_preds = snp_preds[:, ::-1, :]
 
-			# compute pseudocounts
-			ref_preds_strand = ref_preds[..., gene_strand_mask]
-			pseudocounts = np.percentile(ref_preds_strand, 25, axis=0)
+			# Keep only the valid predictions (drop padded entries)
+			if n_in_batch != B:
+				snp_preds = snp_preds[: 2 * n_in_batch]
+
+			###**
 
 
-			if snps[si].rsid == 'chr1_36136601_T_C_b38' and gene_id == 'ENSG00000054116.12':
-				gene_span_slice = np.arange(np.min(gene_slice), np.max(gene_slice) +1)
-				#gene_span_slice = np.arange(np.min(gene_slice)-1000, np.max(gene_slice) +1001)
-				ref_preds_gene_span = ref_preds[gene_span_slice]
-				alt_preds_gene_span = alt_preds[gene_span_slice]
-				# tissue_index = 33
-				# np.log2(np.sum(alt_preds_gene_span[:,tissue_index]) + 1) - np.log2(np.sum(ref_preds_gene_span[:,tissue_index])+1)
-				# np.log2(np.sum(alt_preds_gene[:,tissue_index]) + 1) - np.log2(np.sum(ref_preds_gene[:,tissue_index])+1)
-				# np.log2(np.sum(alt_preds[:,tissue_index]) + 1) - np.log2(np.sum(ref_preds[:,tissue_index])+1)
-				#indices = (ref_preds_gene_span[:,0] > .2) | (alt_preds_gene_span[:,0] > .2)
-				#np.log2(np.sum(alt_preds_gene_span[indices,0]) + 1) - np.log2(np.sum(ref_preds_gene_span[indices,0])+1)
+			# Loop throug each batched snp
+			for snp_iter, snp in enumerate(snp_batch):
+				# Get predictions for batched snps
+				ref_preds, alt_preds = snp_preds[2*snp_iter], snp_preds[((2*snp_iter) + 1)]
 
-				pdb.set_trace()
+				global_snp_index = ii + snp_iter
 
-			# write scores to HDF
-			write_snp(
-				ref_preds_gene,
-				alt_preds_gene,
-				sed_out,
-				xi,
-				options.sed_stats,
-				pseudocounts,
-			)
+				# untransform predictions
+				if options.targets_file is not None:
+					if not options.no_untransform:
+						if options.untransform_old:
+							ref_preds = dataset.untransform_preds1(ref_preds, targets_df, unclip=not options.no_unclip)
+							alt_preds = dataset.untransform_preds1(alt_preds, targets_df, unclip=not options.no_unclip)
+						else:
+							ref_preds = untransform_preds(ref_preds, targets_df, single_c, unclip=not options.no_unclip)
+							alt_preds = untransform_preds(alt_preds, targets_df, single_c, unclip=not options.no_unclip)
 
-			xi += 1
+				# for each overlapping gene
+				for gene_id, gene_slice in snpseq_gene_slice[global_snp_index].items():
+					if len(gene_slice) > len(set(gene_slice)):
+						print("WARNING: %d %s has overlapping bins" % (global_snp_index, gene_id))
+					# slice gene positions
+					ref_preds_gene = ref_preds[gene_slice]
+					alt_preds_gene = alt_preds[gene_slice]
+
+					# slice relevant strand targets
+					if gene_strand[gene_id] == "+":
+						ref_preds_gene = ref_preds_gene[..., pos_gene_strand_mask]
+						alt_preds_gene = alt_preds_gene[..., pos_gene_strand_mask]
+					else:
+						ref_preds_gene = ref_preds_gene[..., neg_gene_strand_mask]
+						alt_preds_gene = alt_preds_gene[..., neg_gene_strand_mask]
+
+
+					# sum across length
+					ref_preds_sum = ref_preds_gene.sum(axis=0)
+					alt_preds_sum = alt_preds_gene.sum(axis=0)
+					altLog = np.log2(alt_preds_sum + 1)
+					refLog = np.log2(ref_preds_sum + 1)
+					log_sed = altLog - refLog
+
+					t.write(str(snp.chr) + '\t' + str(snp.pos) + '\t' + snp.rsid + '\t' + gene_id + '\t' + ';'.join(log_sed.astype(str)) + '\t' + ';'.join(refLog.astype(str)) + '\t' + ';'.join(altLog.astype(str)) + '\n')	
+	t.close()
 
 	# close genome
 	genome_open.close()
 
-	###################################################
-	# compute SAD distributions across variants
-
-	# write_pct(sed_out, options.sed_stats)
-	sed_out.close()
+	return
 
 
 def clip_float(x, dtype=np.float16):
@@ -508,6 +860,7 @@ def map_snpseq_genes(
 		snpseq_gene_slice.append(OrderedDict())
 
 	for overlap in genes_bedt.intersect(snpseq_bedt, wo=True):
+		
 		gene_id = overlap[3]
 		gene_start = int(overlap[1])
 		gene_end = int(overlap[2])
@@ -653,6 +1006,7 @@ def write_snp(ref_preds, alt_preds, sed_out, xi: int, sed_stats, pseudocounts):
 	alt_preds_sum = alt_preds.sum(axis=0)
 
 	# difference of sums
+	'''
 	if 'SED' in sed_stats:
 		sed = alt_preds_sum - ref_preds_sum
 		sed_out['SED'][xi] = clip_float(sed).astype('float16')
@@ -716,6 +1070,7 @@ def write_snp(ref_preds, alt_preds, sed_out, xi: int, sed_stats, pseudocounts):
 		sed_out["REF"][xi] = ref_preds_sum.astype("float16")
 	if "ALT" in sed_stats:
 		sed_out["ALT"][xi] = alt_preds_sum.astype("float16")
+	'''
 
 
 ################################################################################

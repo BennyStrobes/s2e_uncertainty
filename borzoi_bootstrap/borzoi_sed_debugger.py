@@ -244,9 +244,22 @@ def main():
 	for gene_id, gene in transcriptome.genes.items():
 		gene_strand[gene_id] = gene.strand
 
+
+	##############
+	####**#*#*##*#**#*#*#*#*#*#
+	offset = 0
+	#offset = np.random.choice(np.arange(-50000,50001))
+	####**#*#*##*#**#*#*#*#*#*#
+	####**#*#*##*#**#*#*#*#*#*#
+	####**#*#*##*#**#*#*#*#*#*#
+	####**#*#*##*#**#*#*#*#*#*#
+	####**#*#*##*#**#*#*#*#*#*#
+	####**#*#*##*#**#*#*#*#*#*#
+	####**#*#*##*#**#*#*#*#*#*#
+
 	# map SNP sequences to gene positions
 	snpseq_gene_slice = map_snpseq_genes(
-		snps, out_seq_len, transcriptome, model_stride, options.span
+		snps, out_seq_len, transcriptome, model_stride, options.span, offset=-offset,
 	)
 
 	# remove SNPs w/o genes
@@ -280,7 +293,13 @@ def main():
 	# for each SNP sequence
 	for si, snp in tqdm(enumerate(snps), total=len(snps)):
 		# get SNP sequences
-		snp_1hot_list = bvcf.snp_seq1(snp, seq_len, genome_open)
+
+		flanks = 102000
+
+		snp_1hot_list = bvcf.snp_seq1(snp, seq_len+(flanks*2), genome_open)
+		snp_1hot_list[0] = (snp_1hot_list[0])[(flanks + offset):(flanks+offset+seq_len),:]
+		snp_1hot_list[1] = (snp_1hot_list[1])[(flanks + offset):(flanks+offset+seq_len),:]
+
 		snps_1hot = np.array(snp_1hot_list)
 
 		# get predictions
@@ -318,6 +337,13 @@ def main():
 			if len(gene_slice) > len(set(gene_slice)):
 				print("WARNING: %d %s has overlapping bins" % (si, gene_id))
 
+			'''
+			# Add "exons" near variant
+			if np.min(np.min(np.abs((gene_slice*32 - 196608.0)))) <= 96:
+				gene_slice = np.unique(np.hstack((gene_slice,np.arange(6134, 6155))))
+			'''
+
+
 			# slice gene positions
 			ref_preds_gene = ref_preds[gene_slice]
 			alt_preds_gene = alt_preds[gene_slice]
@@ -334,20 +360,18 @@ def main():
 			ref_preds_strand = ref_preds[..., gene_strand_mask]
 			pseudocounts = np.percentile(ref_preds_strand, 25, axis=0)
 
+			'''
+			if snp.rsid == 'chr22_50580684_A_C_b38' and gene_id == 'ENSG00000100288.20':
+				closest_gene_bins =np.argsort(np.abs((gene_slice*32 - 196608.0)))[:5]
+				diff = alt_preds_gene[:,0] - ref_preds_gene[:,0]
 
-			if snps[si].rsid == 'chr1_36136601_T_C_b38' and gene_id == 'ENSG00000054116.12':
-				gene_span_slice = np.arange(np.min(gene_slice), np.max(gene_slice) +1)
-				#gene_span_slice = np.arange(np.min(gene_slice)-1000, np.max(gene_slice) +1001)
-				ref_preds_gene_span = ref_preds[gene_span_slice]
-				alt_preds_gene_span = alt_preds[gene_span_slice]
-				# tissue_index = 33
-				# np.log2(np.sum(alt_preds_gene_span[:,tissue_index]) + 1) - np.log2(np.sum(ref_preds_gene_span[:,tissue_index])+1)
-				# np.log2(np.sum(alt_preds_gene[:,tissue_index]) + 1) - np.log2(np.sum(ref_preds_gene[:,tissue_index])+1)
-				# np.log2(np.sum(alt_preds[:,tissue_index]) + 1) - np.log2(np.sum(ref_preds[:,tissue_index])+1)
-				#indices = (ref_preds_gene_span[:,0] > .2) | (alt_preds_gene_span[:,0] > .2)
-				#np.log2(np.sum(alt_preds_gene_span[indices,0]) + 1) - np.log2(np.sum(ref_preds_gene_span[indices,0])+1)
+				full_diff = alt_preds[:,0] - ref_preds[:,0]
 
+				full_log_sed = np.log2(np.sum(alt_preds[:,0]) + 1) - np.log2(np.sum(ref_preds[:,0]) + 1)
+
+				#full_diff[(6144-100):6144]
 				pdb.set_trace()
+			'''
 
 			# write scores to HDF
 			write_snp(
@@ -448,19 +472,40 @@ def initialize_output_h5(out_dir: str, sed_stats, snps, snpseq_gene_slice, targe
 	return sed_out
 
 
-def make_snpseq_bedt(snps, seq_len: int):
-	"""Make a BedTool object for all SNP sequences, where seq_len considers cropping."""
+def make_snpseq_bedt(snps, seq_len: int, offset_bp: int = 0):
+	"""Make a BedTool object for all SNP sequences, where seq_len considers cropping.
+
+	offset_bp:
+	  +15 => SNP is 15 bp LEFT of the sequence center
+	  -15 => SNP is 15 bp RIGHT of the sequence center
+	"""
 	num_snps = len(snps)
+
+	# Base symmetric halves
 	left_len = seq_len // 2
 	right_len = seq_len // 2
+
+	# Adjust to move SNP off-center.
+	# Positive offset => SNP left of center => more left context, less right context.
+	left_len += offset_bp
+	right_len -= offset_bp
+
+	# Safety: if someone asks for a too-large offset, don't produce negative lengths.
+	# (You can choose to raise instead; this clamps.)
+	if left_len < 0:
+		left_len = 0
+	if right_len < 0:
+		right_len = 0
 
 	snpseq_bed_lines = []
 	for si in range(num_snps):
 		# bound sequence start at 0 (true sequence will be N padded)
 		snpseq_start = max(0, snps[si].pos - left_len)
 		snpseq_end = snps[si].pos + right_len
+
 		# correct end for alternative indels
 		snpseq_end += max(0, len(snps[si].ref_allele) - snps[si].longest_alt())
+
 		snpseq_bed_lines.append(
 			"%s %d %d %d" % (snps[si].chr, snpseq_start, snpseq_end, si)
 		)
@@ -477,6 +522,8 @@ def map_snpseq_genes(
 	span: bool,
 	majority_overlap: bool = True,
 	intron1: bool = False,
+	intron2: bool = False,
+	offset: int = 0.0
 ):
 	"""Intersect SNP sequences with gene exons, constructing a list
 	mapping sequence indexes to dictionaries of gene_ids to their
@@ -500,7 +547,7 @@ def map_snpseq_genes(
 		genes_bedt = transcriptome.bedtool_exon()
 
 	# make SNP sequence BEDtool
-	snpseq_bedt = make_snpseq_bedt(snps, seq_len)
+	snpseq_bedt = make_snpseq_bedt(snps, seq_len, offset_bp=offset)
 
 	# map SNPs to genes
 	snpseq_gene_slice = []
@@ -535,6 +582,9 @@ def map_snpseq_genes(
 		if intron1:
 			bin_start -= 1
 			bin_end += 1
+		elif intron2:
+			bin_start -= 2
+			bin_end += 2
 
 		# clip boundaries
 		bin_max = int(seq_len / model_stride)

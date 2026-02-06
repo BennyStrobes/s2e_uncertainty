@@ -2,6 +2,8 @@ import numpy as np
 import os
 import sys
 import pdb
+import pyarrow.parquet as pq
+import pickle
 
 
 
@@ -15,7 +17,7 @@ import pdb
 #########################
 # Command line args
 #########################
-raw_fine_mapping_eqtl_results_file = sys.argv[1]
+raw_fine_mapping_eqtl_results_dir = sys.argv[1]
 pip_threshold = float(sys.argv[2])
 processed_fm_eqtl_output_file = sys.argv[3]
 
@@ -24,6 +26,69 @@ valid_chroms= {}
 for chrom_num in range(1,23):
 	valid_chroms['chr' + str(chrom_num)] = 1
 
+
+t = open(processed_fm_eqtl_output_file,'w')
+t.write('tissue\tchromosome\tvariant_position\tvariant_hg38\tallele1\tallele2\tminor_allele\tgene\tpip\tbeta_posterior\tsd_posterior\tgene_type\n')
+
+for file_name in os.listdir(raw_fine_mapping_eqtl_results_dir):
+	if file_name.endswith('parquet') == False:
+		continue
+
+	full_file_name = raw_fine_mapping_eqtl_results_dir + file_name
+	
+	tissue_name =file_name.split('.v10')[0]
+	print(tissue_name)
+
+	pf = pq.ParquetFile(full_file_name)
+	for rg in range(pf.num_row_groups):
+		table = pf.read_row_group(rg)   # this is a chunk
+
+		# Process fields and print to output
+		array = np.asarray(table)
+		# Loop through snp-gene pairs 
+		nrows = array.shape[0]
+		for row_iter in range(nrows):
+			data = array[row_iter, :]
+			gene_id = data[0]
+			gene_type = data[2]
+			variant_id = data[3]
+			pip = float(data[4])
+			if pip < pip_threshold:
+				continue
+			af = float(data[5])
+			if np.isnan(af):
+				continue
+
+			afc = float(data[8])
+			afc_se = float(data[9])
+
+			variant_info = variant_id.split('_')
+
+			variant_chrom = variant_info[0]
+
+			if variant_chrom not in valid_chroms:
+				continue
+			
+			variant_pos = variant_info[1]
+			A1 = variant_info[2]
+			A2 = variant_info[3]
+
+			if len(A1) != 1:
+				continue
+			if len(A2) != 1:
+				continue
+
+			if af > .5:
+				minor_allele = A1
+			else:
+				minor_allele = A2
+			
+
+			t.write(tissue_name + '\t' + variant_chrom + '\t' + variant_pos + '\t' + variant_id + '\t' + A1 + '\t' + A2 + '\t' + minor_allele + '\t' + gene_id + '\t' + str(pip) + '\t' + str(afc) + '\t' + str(afc_se) + '\t' + gene_type + '\n')
+
+t.close()
+
+'''
 f = open(raw_fine_mapping_eqtl_results_file)
 t = open(processed_fm_eqtl_output_file,'w')
 weird_cases = 0
@@ -71,3 +136,5 @@ for line in f:
 f.close()
 t.close()
 print(processed_fm_eqtl_output_file)
+
+'''

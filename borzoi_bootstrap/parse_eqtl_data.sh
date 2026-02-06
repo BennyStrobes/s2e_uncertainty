@@ -8,12 +8,12 @@ conda activate borzoi
 
 
 
-raw_fine_mapping_eqtl_results_file="$1"
+raw_fine_mapping_eqtl_results_dir="$1"
 pip_threshold="$2"
 processed_fm_eqtl_output_file="$3"
 fm_vcf_output_file="${4}"
 
-python parse_eqtl_data.py $raw_fine_mapping_eqtl_results_file $pip_threshold $processed_fm_eqtl_output_file
+python parse_eqtl_data.py $raw_fine_mapping_eqtl_results_dir $pip_threshold $processed_fm_eqtl_output_file
 
 python make_vcf_out_of_eqtls.py $processed_fm_eqtl_output_file $fm_vcf_output_file
 

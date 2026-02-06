@@ -162,6 +162,7 @@ make_correct_sign_pval_enrichment_plot_r35 <- function(df) {
 	p_ub_arr <- c()
 	bin_names_arr <- c()
 
+
 	indices <- abs(df$borzoi_p) > 0.5 & abs(df$borzoi_p) <= 1.0
 	bin_obj = compute_proportion_agree(df[indices, ])
 	p_arr <- c(p_arr, bin_obj$p_hat)
@@ -297,6 +298,9 @@ make_correct_sign_pval_enrichment_plot_r35_v2 <- function(df) {
   df$borzoi_p <- df$borzoi_pvalue
   df$borzoi_mean <- df$mean_borzoi_log_sed
 
+
+
+
   p_arr <- c()
   p_lb_arr <- c()
   p_ub_arr <- c()
@@ -343,6 +347,8 @@ make_correct_sign_pval_enrichment_plot_r35_v2 <- function(df) {
     counts = n_trip_arr
   )
 
+
+  print(df)
   #print(df)
 
   # optional (but safe): clip CIs to [0, 100]
@@ -1350,13 +1356,70 @@ output_dir <- args[2]
 df <- read.table(results_summary_file, header=TRUE, sep="\t")
 borzoi_bs <- get_bootstrapped_estimates(df$bs_borzoi_log_sed)  # N x B
 B <- ncol(borzoi_bs)
-p_plus  <- (1 + rowSums(borzoi_bs >= 0, na.rm = TRUE)) / (1 + B)
-p_minus <- (1 + rowSums(borzoi_bs <= 0, na.rm = TRUE)) / (1 + B)
+p_plus  <- (1 + rowSums(borzoi_bs >= -0.01, na.rm = TRUE)) / (1 + B)
+p_minus <- (1 + rowSums(borzoi_bs <= 0.01, na.rm = TRUE)) / (1 + B)
+#p_plus  <- (1 + rowSums(borzoi_bs >= 0.0, na.rm = TRUE)) / (1 + B)
+#p_minus <- (1 + rowSums(borzoi_bs <= 0.0, na.rm = TRUE)) / (1 + B)
+
 borzoi_pvalues <- 2 * pmin(p_plus, p_minus)
 df$borzoi_pvalue <- borzoi_pvalues
 df$bs_borzoi_log_sed <- NULL
 
+nan_indices <- is.na(df$beta_posterior) == FALSE
+df <- df[nan_indices,]
+borzoi_bs <- borzoi_bs[nan_indices,]
 
+
+
+
+df$borzoi_mean = df$mean_borzoi_log_sed
+
+indices = (df$borzoi_pvalue < .025) & (((df$beta_posterior)*(df$mean_borzoi_log_sed)) < 0.0)
+
+print(df[indices,])
+
+
+
+sub_bs <- borzoi_bs[indices,]
+
+cbind(
+  min = apply(sub_bs, 1, min, na.rm = TRUE),
+  max = apply(sub_bs, 1, max, na.rm = TRUE)
+)
+
+
+sig_indices = df$borzoi_pvalue < .2
+obj=compute_proportion_agree(df[sig_indices,])
+print(obj$p_hat)
+
+sig_indices = df$borzoi_pvalue < .1
+obj=compute_proportion_agree(df[sig_indices,])
+print(obj$p_hat)
+
+sig_indices = df$borzoi_pvalue < .05
+obj=compute_proportion_agree(df[sig_indices,])
+print(obj$p_hat)
+
+sig_indices = df$borzoi_pvalue < .025
+print(sum(sig_indices))
+obj=compute_proportion_agree(df[sig_indices,])
+print(obj$p_hat)
+
+if (FALSE) {
+sig_indices = abs(df$mean_borzoi_log_sed) > .24
+print(sum(sig_indices))
+obj=compute_proportion_agree(df[sig_indices,])
+print(obj$p_hat)
+}
+print("DONE")
+
+
+
+
+
+
+
+print("DONE")
 
 output_file <- paste0(output_dir, "borzoi_power_to_detect_by_abs_dist_to_tss_enrichment_plot.pdf")
 pp <- make_power_plot_controlled_for_abs_distance(df) 
@@ -1393,19 +1456,22 @@ output_file <- paste0(output_dir, "borzoi_mean_susie_beta_all_snps_scatter.pdf")
 pp <- make_borzoi_mean_vs_beta_posterior_scatter_v2(df,p=0.0)
 ggsave(pp, file=output_file, width=5.2, height=4.0, units="in")
 
+if (FALSE) {
 output_file <- paste0(output_dir, "borzoi_mean_susie_beta_scatter_rare_only.pdf")
 pp <- make_borzoi_mean_vs_beta_posterior_scatter_v2(df[df$maf < .05, ])
 ggsave(pp, file=output_file, width=5.2, height=4.0, units="in")
-
+}
 
 output_file <- paste0(output_dir, "borzoi_correct_sign_pval_significance_enrichment_plot.pdf")
 pp <- make_correct_sign_pval_enrichment_plot_r35_v2(df) + labs(x="S2E variant-to-gene significance ", y="Concordant sign %")
 ggsave(pp, file=output_file,device = cairo_pdf, width=5.2, height=3.63, units="in")
 
 
+if (FALSE) {
 output_file <- paste0(output_dir, "borzoi_correct_sign_pval_significance_enrichment_plot_rare_only.pdf")
 pp <- make_correct_sign_pval_enrichment_plot_r35_v2(df[df$maf < .05, ]) + labs(x="S2E-predicted variant-to-gene significance ", y="Concordant sign %")
 ggsave(pp, file=output_file,device = cairo_pdf, width=7.2, height=3.2, units="in")
+}
 
 
 output_file <- paste0(output_dir, "borzoi_correct_sign_pval_significance_and_maf_enrichment_plot.pdf")

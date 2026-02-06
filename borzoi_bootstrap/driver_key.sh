@@ -14,7 +14,7 @@ baskerville_code_dir="/home/ch271704/tools/baskerville/src/baskerville/scripts/"
 borzoi_micro_json_file="/home/ch271704/tools/borzoi/tutorials/latest/train_model/params_gtex_micro.json"
 borzoi_micro_json_file="/home/ch271704/tools/borzoi/tutorials/latest/train_model/params_gtex_micro_100_iter.json"
 
-raw_fine_mapping_eqtl_results_file="/lab-share/CHIP-Strober-e2/Public/GTEx/fine_mapping/GTEx_49tissues_release1.tsv"
+raw_fine_mapping_eqtl_results_dir="/lab-share/CHIP-Strober-e2/Public/GTEx/fine_mapping/v10/"
 
 gtex_sample_attributes_file="/lab-share/CHIP-Strober-e2/Public/GTEx/gtex_sample_attributes/GTEx_Analysis_v10_Annotations_SampleAttributesDS.txt"
 
@@ -48,6 +48,7 @@ ukbb_all_snp_sumstat_dir="/lab-share/CHIP-Strober-e2/Public/ldsc/sumstats/UKBB_a
 
 gene_tss_file="/lab-share/CHIP-Strober-e2/Public/gene_annotation_files/genecode.v39.GRCh38.bed"
 
+gtex_v10_gene_gtf_file="/lab-share/CHIP-Strober-e2/Public/gene_annotation_files/gencode.v39.GRCh38.genes.gtf"
 
 #################
 # Output directories
@@ -218,8 +219,10 @@ pip_threshold="0.9"
 processed_fm_eqtl_output_file=${processed_fm_eqtl_data_dir}"PIP_"${pip_threshold}"_fine_mapped_eqtl_results.txt"
 fm_vcf_output_file=${processed_fm_eqtl_data_dir}"PIP_"${pip_threshold}"_fine_mapped_eqtl.vcf"
 if false; then
-sh parse_eqtl_data.sh $raw_fine_mapping_eqtl_results_file $pip_threshold $processed_fm_eqtl_output_file $fm_vcf_output_file
+sh parse_eqtl_data.sh $raw_fine_mapping_eqtl_results_dir $pip_threshold $processed_fm_eqtl_output_file $fm_vcf_output_file
+fi
 
+if false; then
 pip_threshold="0.75"
 processed_fm_eqtl_output_file=${processed_fm_eqtl_data_dir}"PIP_"${pip_threshold}"_fine_mapped_eqtl_results.txt"
 fm_vcf_output_file=${processed_fm_eqtl_data_dir}"PIP_"${pip_threshold}"_fine_mapped_eqtl.vcf"
@@ -244,6 +247,62 @@ for bs_iter in {1..100}; do
 done
 fi
 
+
+if false; then
+for bs_iter in {51..100}; do
+    output_file=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_gene_span_borzoi_sed_results.txt"
+    sbatch fast_borzoi_sed_gene_span.sh ${output_file} ${fm_vcf_output_file} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
+done
+fi
+
+
+
+if false; then
+for bs_iter in {31..60}; do
+    output_file=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_window_span_borzoi_sed_results.txt"
+    sbatch fast_borzoi_sed_window_span.sh ${output_file} ${fm_vcf_output_file} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
+done
+fi
+
+
+
+
+tmp_vcf="/lab-share/CHIP-Strober-e2/Public/ben/s2e_uncertainty/gtex_tissue_bootstrap/processed_fm_eqtl_results/PIP_0.9_fine_mapped_eqtl_debug.vcf"
+orig_gtf="/home/ch271704/tools/borzoi/examples/hg38/genes/gencode41/gencode41_basic_nort.gtf"
+if false; then
+for bs_iter in {1..100}; do
+    output_file=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_borzoi_sed_results_debug_fast_borzoi_pred.txt"
+    sbatch fast_borzoi_sed_custom_gtf.sh ${output_file} ${tmp_vcf} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/" $orig_gtf
+done
+fi
+
+if false; then
+for bs_iter in {1..100}; do
+    output_dir=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_borzoi_sed_results_debug_"
+    sbatch borzoi_sed_debugger.sh ${output_dir} ${tmp_vcf} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
+done
+fi
+
+if false; then
+for bs_iter in {1..30}; do
+    output_dir=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_borzoi_sed_results_debug_"
+    sh borzoi_sed_debugger.sh ${output_dir} ${tmp_vcf} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
+done
+fi
+if false; then
+for bs_iter in {1..20}; do
+    output_dir=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_borzoi_sed_results_debug_"
+    sh borzoi_sed_debugger.sh ${output_dir} ${tmp_vcf} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
+done
+fi
+
+
+if false; then
+bs_iter="2"
+    output_dir=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_borzoi_sed_results_debug_"
+    sh borzoi_sed_debugger.sh ${output_dir} ${tmp_vcf} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
+fi
+
 # Organize results across parallel runs
 if false; then
 sh organize_gtex_borzoi_sed_results_fm.sh ${borzoi_eqtl_effects_dir} $full_gtex_target_file $borzoi_eqtl_effects_dir $processed_fm_eqtl_output_file $gene_tss_file
@@ -261,7 +320,7 @@ fi
 if false; then
 source ~/.bashrc
 conda activate plink_env
-Rscript visualize_borzoi_fine_mapped_effects.R $borzoi_eqtl_effects_dir"cross_bootstrap_PIP_0.9_borzoi_pred_eqtl_effects_cross_tissue.txt" $visualization_fm_eqtl_dir
+Rscript visualize_borzoi_fine_mapped_effects.R $borzoi_eqtl_effects_dir"cross_bootstrap_PIP_0.9_gene_span_borzoi_pred_eqtl_effects_cross_tissue.txt" $visualization_fm_eqtl_dir
 fi
 
 
@@ -321,8 +380,9 @@ fi
 # Compute correlations with predicted expression
 tissue_name="Muscle_Skeletal"
 expr_correlation_summary_file=${expression_correlation_dir}${tissue_name}"_expression_correlation_summary.txt"
+if false; then
 sh rss_correlation_of_borzoi_genetic_expression.sh $tissue_name $organized_borzoi_gtex_predictions${tissue_name}"_borzoi_estimates_w_uncertainty_" $eqtl_sumstats_dir $protein_coding_genes_file $genotype_1000G_plink_stem $hm3_snp_list_file $expr_correlation_summary_file
-
+fi
 
 
 
