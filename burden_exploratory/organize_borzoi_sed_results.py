@@ -46,25 +46,32 @@ vg_pairs_to_test_file = sys.argv[3]
 vg_pairs_to_preds = initialize_vg_pairs_to_pred_dictionary(vg_pairs_to_test_file)
 
 # Loop through model reps
-reps = np.arange(0,4)
-for rep in reps:
+chunks = ['aa', 'ab', 'ac', 'ad']
+for chunk in chunks:
+	reps = np.arange(0,4)
+	for rep in reps:
 
-	sed_h5 = borzoi_pred_input_stem + str(rep) + '/sed.h5'
-	ff = h5py.File(sed_h5, "r")
+
+		version = str(rep) + '_' + chunk
+
+		if version == '1_ab' or version == '1_ac' or version == '1_ad' or version == '2_aa':
+			continue
+		sed_h5 = borzoi_pred_input_stem + str(rep) + '_' + chunk + '/sed.h5'
+		ff = h5py.File(sed_h5, "r")
 
 
-	genes = np.asarray(ff['gene']).astype(str)
-	snp_indices = np.asarray(ff['si']).astype(int)
-	snp_ids = (np.asarray(ff['snp'])[snp_indices]).astype(str)
-	log_seds = np.asarray(ff['logSED']).astype(float)
+		genes = np.asarray(ff['gene']).astype(str)
+		snp_indices = np.asarray(ff['si']).astype(int)
+		snp_ids = (np.asarray(ff['snp'])[snp_indices]).astype(str)
+		log_seds = np.asarray(ff['logSED']).astype(float)
 
-	for ii, gene_id in enumerate(genes):
-		snp_id = snp_ids[ii]
-		snp_gene_pair = snp_id + ':' + gene_id.split('.')[0]
+		for ii, gene_id in enumerate(genes):
+			snp_id = snp_ids[ii]
+			snp_gene_pair = snp_id + ':' + gene_id.split('.')[0]
 
-		if snp_gene_pair in vg_pairs_to_preds:
-			vg_pairs_to_preds[snp_gene_pair].append(log_seds[ii])
-	ff.close()
+			if snp_gene_pair in vg_pairs_to_preds:
+				vg_pairs_to_preds[snp_gene_pair].append(log_seds[ii])
+		ff.close()
 
 
 f = open(vg_pairs_to_test_file)
@@ -86,8 +93,6 @@ for line in f:
 	effect = np.mean(np.asarray(vg_pairs_to_preds[vg_pair]))
 
 	t.write(line + '\t' + str(effect) + '\n')
-	if np.abs(effect) > .05:
-		print(line + '\t' + str(effect))
 
 
 f.close()

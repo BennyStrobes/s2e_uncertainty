@@ -44,23 +44,20 @@ def extract_burden_genes_on_this_chrom(chrom_string, burden_genes_summary_file):
 burden_genes_summary_file = sys.argv[1]
 genotype_dir = sys.argv[2]
 variant_gene_pairs_dir = sys.argv[3]
+chrom_num = int(sys.argv[4])
 
 distance_window = 25000
 
 
-t = open(variant_gene_pairs_dir + 'burden_variant_gene_pairs_dist_' + str(distance_window) + '.txt','w')
+t = open(variant_gene_pairs_dir + 'burden_variant_gene_pairs_dist_' + str(distance_window) + '_' + str(chrom_num) + '.txt','w')
 t.write('chr\tvariant_id\tvariant_position\tA1\tA2\talt_AF\tgene_name\tgene_tss\tensamble_id\n')
 
-for chrom_num in range(1,23):
-	print(chrom_num)
 
-	# Extract burden genes and tss for this chromosome
-	chrom_burden_genes = extract_burden_genes_on_this_chrom('chr' + str(chrom_num), burden_genes_summary_file)
+# Extract burden genes and tss for this chromosome
+chrom_burden_genes = extract_burden_genes_on_this_chrom('chr' + str(chrom_num), burden_genes_summary_file)
 
-	# Skip chrom with no burden genes
-	if len(chrom_burden_genes) == 0:
-		continue
-
+# Skip chrom with no burden genes
+if len(chrom_burden_genes) > 0:
 	chrom_arr = ['NULL']*250000000
 
 

@@ -280,6 +280,17 @@ def load_in_variant_to_gene_links(organized_pred_results_file, chrom_num, borzoi
 	f.close()
 	return variant_to_links
 
+def load_in_high_info_snps(high_info_snp_list):
+	f = open(high_info_snp_list)
+	dicti = {}
+
+	for line in f:
+		line = line.rstrip()
+		data = line.split('\t')
+		dicti[data[0]] = 1
+	f.close()
+	return dicti
+
 ##########################
 # Command line args
 ##########################
@@ -295,8 +306,14 @@ genotype_sample_names = sys.argv[9]
 wb_unrelated_samples_file = sys.argv[10]
 borzoi_effect_thresh = float(sys.argv[11])
 burden_output_file = sys.argv[12]
+high_info_snp_dir = sys.argv[13]
 
 
+high_info_snp_list = high_info_snp_dir + 'snp_list_chr' + str(chrom_num) + '.MAF_001_INFO_06.txt'
+
+
+# Extract high info snps
+high_info_snps = load_in_high_info_snps(high_info_snp_list)
 
 
 
@@ -363,6 +380,9 @@ for var in bfile:
 	variant_position = var.pos
 
 	new_var_id = 'chr' + str(chrom_num) + '_' + str(variant_position) + '_' + var.alleles[0] + '_' + var.alleles[1] + '_b37'
+
+	if var.rsid not in high_info_snps:
+		continue
 
 	if new_var_id not in variant_to_gene_links:
 		continue
