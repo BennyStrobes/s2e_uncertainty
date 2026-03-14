@@ -255,15 +255,19 @@ for bs_iter in {51..100}; do
 done
 fi
 
-
-
 if false; then
-for bs_iter in {31..60}; do
+for bs_iter in {81..100}; do
     output_file=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_window_span_borzoi_sed_results.txt"
     sbatch fast_borzoi_sed_window_span.sh ${output_file} ${fm_vcf_output_file} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"
 done
 fi
 
+if false; then
+for bs_iter in {90..100}; do
+    output_file=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_per_bin_eqtl_effects_borzoi_sed_results_debugger.txt"
+    sbatch fast_borzoi_sed_per_bin.sh ${output_file} ${fm_vcf_output_file} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/" $processed_fm_eqtl_output_file $full_gtex_target_file $gene_tss_file
+done
+fi
 
 
 
@@ -296,8 +300,8 @@ for bs_iter in {1..20}; do
 done
 fi
 
-
 if false; then
+echo $tmp_vcf
 bs_iter="2"
     output_dir=${borzoi_eqtl_effects_dir}"bs"${bs_iter}"_PIP_"${pip_threshold}"_borzoi_pred_eqtl_effects_borzoi_sed_results_debug_"
     sh borzoi_sed_debugger.sh ${output_dir} ${tmp_vcf} ${model_training_dir}"bootstrapped_models/bs"${bs_iter}"/"

@@ -20,6 +20,7 @@ if false; then
 python organize_gtex_borzoi_sed_results_fm.py $borzoi_gtex_predictions $full_gtex_target_file $organized_borzoi_gtex_predictions
 fi
 
+python organize_gtex_borzoi_sed_results_fm_full_window.py $borzoi_gtex_predictions $full_gtex_target_file $organized_borzoi_gtex_predictions
 
 
 if false; then
@@ -31,5 +32,6 @@ python organize_gtex_borzoi_sed_results_fm_random_rc_debug.py $borzoi_gtex_predi
 fi
 
 
-
+if false; then
 python extract_fine_mapped_effects.py $full_gtex_target_file $processed_fm_eqtl_output_file $organized_borzoi_gtex_predictions $gene_tss_file
+fi
