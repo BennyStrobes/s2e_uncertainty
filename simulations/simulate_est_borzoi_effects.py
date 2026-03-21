@@ -69,7 +69,7 @@ np.random.seed(simulation_iter)
 # Set up sampling variance
 if borzoi_error_distribution == 'simple_mog':
 	pis = np.asarray([.4, .6])
-	sig_sqs = np.asarray([.1, .9])
+	sig_sqs = np.asarray([.001, .999])
 	scaler = sampling_variance/np.sum(pis*sig_sqs)
 	sig_sqs = sig_sqs*scaler
 

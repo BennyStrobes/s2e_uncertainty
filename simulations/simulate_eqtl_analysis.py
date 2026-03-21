@@ -143,6 +143,7 @@ gene_ld_summary_file = sys.argv[3]
 onek_genomes_plink_filestem = sys.argv[4]
 eqtl_sample_size = int(sys.argv[5])
 simulation_iter = int(sys.argv[6])
+individual_expression_file = sys.argv[7]
 
 
 
@@ -154,12 +155,16 @@ gene_id_to_causal_effects = create_mapping_from_gene_id_to_causal_effects(causal
 
 
 # Get sample indices
-sample_indices = np.random.choice(np.arange(489), size=eqtl_sample_size, replace=False)
+sample_indices = np.arange(489)
 
 
 # Open output file handle
 t = gzip.open(est_eqtl_effect_size_file, 'wt')
 t.write('gene\tvariant\teqtl_effect_size\teqtl_effect_size_se\n')
+
+# Open output file handle
+t_indi = gzip.open(individual_expression_file, 'wt')
+t_indi.write('gene\tindividual\texpression\n')
 
 # Loop through chromosomes
 for chrom_num in range(1,23):
@@ -208,6 +213,7 @@ for chrom_num in range(1,23):
 		# Standardize genotype matrix
 		std_geno_mat = standardize_geno(geno_mat)
 
+
 		# extract causal effects for gene
 		causal_effect_tupler = gene_id_to_causal_effects[gene_name]
 		tmp_variant_names = []
@@ -242,7 +248,12 @@ for chrom_num in range(1,23):
 		for var_iter, variant_id in enumerate(cis_variant_names):
 			t.write(gene_name + '\t' + variant_id + '\t' + str(eqtl_beta[var_iter]) + '\t' + str(eqtl_beta_se[var_iter]) + '\n')
 
+		# Print to individual output file
+		for indi_iter, indi_expr in enumerate(gene_expression):
+			t_indi.write(gene_name + '\t' + str(indi_iter) + '\t' + str(indi_expr) + '\n')
+
+
 	f.close()
 t.close()
-
+t_indi.close()
 print(est_eqtl_effect_size_file)

@@ -37,6 +37,14 @@ def create_mapping_from_variant_id_to_genotype_index(ordered_snps):
 	return mapping
 
 
+def standardize_geno(geno_mat):
+	std_geno_mat = np.copy(geno_mat)
+	n_snps = std_geno_mat.shape[0]
+
+	for snp_iter in range(n_snps):
+		std_geno_mat[snp_iter,:] = (std_geno_mat[snp_iter,:] - np.mean(std_geno_mat[snp_iter,:]))/np.std(std_geno_mat[snp_iter,:], ddof=1)
+
+	return std_geno_mat
 
 
 ######################
@@ -47,9 +55,9 @@ gene_summary_file = sys.argv[2]
 ld_dir = sys.argv[3]
 
 # Open global gene summary file
-ld_gene_summary_file = ld_dir + 'gene_summary_w_ld.txt'
+ld_gene_summary_file = ld_dir + 'gene_summary_w_ld_full2.txt'
 t_glob = open(ld_gene_summary_file,'w')
-t_glob.write('gene_name\tchrom_num\tgene_tss\tn_cis_variants\tcis_variant_bim_file\tld_summary_file\n')
+t_glob.write('gene_name\tchrom_num\tgene_tss\tn_cis_variants\tcis_variant_bim_file\tld_summary_file\traw_ld_file\traw_std_genotype_file\n')
 
 # Loop through chromosomes
 for chrom_num in range(1,23):
@@ -105,6 +113,9 @@ for chrom_num in range(1,23):
 		ld_scores = np.sum(squared_LD_adj,axis=1)
 		mean_ld = np.mean(LD,axis=0)
 
+		# Standardize genotype
+		std_geno_mat = standardize_geno(geno_mat)
+
 		# Print to output file
 		# Output file has a row for each variant and column for ld score and average mean
 		gene_ld_summary_file = ld_dir + gene_name + '_ld_summary.txt'
@@ -114,8 +125,16 @@ for chrom_num in range(1,23):
 			t.write(var_name + '\t' + str(ld_scores[var_iter]) + '\t' + str(mean_ld[var_iter]) + '\n')
 		t.close()
 
+		# Raw LD
+		gene_raw_ld_file = ld_dir + gene_name + '_raw_ld.npy'
+		np.save(gene_raw_ld_file, LD)
+
+		# Raw genotype
+		gene_raw_geno_file = ld_dir + gene_name + '_raw_geno.npy'
+		np.save(gene_raw_geno_file, np.transpose(std_geno_mat))		
+
 		# update global file
-		t_glob.write('\t'.join(data) + '\t' + gene_ld_summary_file + '\n')
+		t_glob.write('\t'.join(data) + '\t' + gene_ld_summary_file + '\t' + gene_raw_ld_file + '\t' + gene_raw_geno_file + '\n')
 
 	f.close()
 
