@@ -388,8 +388,6 @@ if false; then
 sh rss_correlation_of_borzoi_genetic_expression.sh $tissue_name $organized_borzoi_gtex_predictions${tissue_name}"_borzoi_estimates_w_uncertainty_" $eqtl_sumstats_dir $protein_coding_genes_file $genotype_1000G_plink_stem $hm3_snp_list_file $expr_correlation_summary_file
 fi
 
-
-
 if false; then
 source ~/.bashrc
 conda activate plink_env

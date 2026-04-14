@@ -57,7 +57,7 @@ def create_mapping_from_gene_id_to_causal_effects(causal_variant_gene_effect_siz
 			continue
 		gene_id = data[0]
 		var_id = data[1]
-		effect = float(data[2])
+		effect = float(data[6])
 		if gene_id not in mapping:
 			mapping[gene_id] = []
 		mapping[gene_id].append((var_id, effect))
@@ -134,6 +134,24 @@ def marginal_snp_effects_and_se(gene_expression, geno_mat):
 
 	return betas, ses
 
+
+def create_mapping_from_variant_id_to_alleles(snp_array, a0_arr, a1_arr, chrom_arr, pos_arr):
+	if len(snp_array) != len(a0_arr):
+		print('assumption eorroro')
+		pdb.set_trace()
+	if len(snp_array) != len(a1_arr):
+		print('assumption eorroro')
+		pdb.set_trace()
+
+	dicti = {}
+
+	for ii, snp_id in enumerate(snp_array):
+		if snp_id in dicti:
+			print('assumpationoenroer')
+			pdb.set_trace()
+		dicti[snp_id] = (a0_arr[ii], a1_arr[ii], chrom_arr[ii], pos_arr[ii])
+	return dicti
+
 ######################
 # Command line args
 ######################
@@ -148,7 +166,7 @@ individual_expression_file = sys.argv[7]
 
 
 # set random seed
-np.random.choice(simulation_iter)
+np.random.seed(simulation_iter)
 
 # Create mapping from gene id to vector of causal effects
 gene_id_to_causal_effects = create_mapping_from_gene_id_to_causal_effects(causal_variant_gene_effect_size_file)
@@ -160,7 +178,7 @@ sample_indices = np.arange(489)
 
 # Open output file handle
 t = gzip.open(est_eqtl_effect_size_file, 'wt')
-t.write('gene\tvariant\teqtl_effect_size\teqtl_effect_size_se\n')
+t.write('gene\tvariant\tchr\tsnp_pos\tA0\tA1\teqtl_effect_size\teqtl_effect_size_se\tN\n')
 
 # Open output file handle
 t_indi = gzip.open(individual_expression_file, 'wt')
@@ -177,6 +195,10 @@ for chrom_num in range(1,23):
 
 	# Create mapping from variant id to index
 	rsid_to_genotype_index = create_mapping_from_variant_id_to_genotype_index(np.asarray(bim['snp']))
+
+	# Create mapping from rsid to a0, a1
+	rsid_to_alleles = create_mapping_from_variant_id_to_alleles(np.asarray(bim['snp']), np.asarray(bim['a0']), np.asarray(bim['a1']), np.asarray(bim['chrom']), np.asarray(bim['pos']))
+
 
 	# Loop through genes / filter to only genes on this chromosome
 	f = open(gene_ld_summary_file)
@@ -201,9 +223,22 @@ for chrom_num in range(1,23):
 
 		# Extract variant indices corresponding to cis_variant names
 		cis_variant_indices = []
+		cis_variant_a0s = []
+		cis_variant_a1s = []
+		cis_variant_chroms = []
+		cis_variant_poss = []
 		for variant_name in cis_variant_names:
 			cis_variant_indices.append(rsid_to_genotype_index[variant_name])
+			var_infos = rsid_to_alleles[variant_name]
+			cis_variant_a0s.append(var_infos[0])
+			cis_variant_a1s.append(var_infos[1])
+			cis_variant_chroms.append(var_infos[2])
+			cis_variant_poss.append(var_infos[3])
 		cis_variant_indices = np.asarray(cis_variant_indices)
+		cis_variant_a0s = np.asarray(cis_variant_a0s)
+		cis_variant_a1s = np.asarray(cis_variant_a1s)
+		cis_variant_chroms = np.asarray(cis_variant_chroms)
+		cis_variant_poss = np.asarray(cis_variant_poss)
 
 		# Extract genotype matrix
 		geno_mat = G[cis_variant_indices,:].compute()
@@ -246,7 +281,7 @@ for chrom_num in range(1,23):
 
 		# Print to output file
 		for var_iter, variant_id in enumerate(cis_variant_names):
-			t.write(gene_name + '\t' + variant_id + '\t' + str(eqtl_beta[var_iter]) + '\t' + str(eqtl_beta_se[var_iter]) + '\n')
+			t.write(gene_name + '\t' + variant_id + '\t' + str(cis_variant_chroms[var_iter]) + '\t' + str(cis_variant_poss[var_iter]) + '\t' + cis_variant_a0s[var_iter] + '\t' + cis_variant_a1s[var_iter] + '\t' + str(eqtl_beta[var_iter]) + '\t' + str(eqtl_beta_se[var_iter]) + '\t' + str(n_samp) + '\n')
 
 		# Print to individual output file
 		for indi_iter, indi_expr in enumerate(gene_expression):

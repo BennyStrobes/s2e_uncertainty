@@ -46,6 +46,15 @@ ashr_like_samp_var_dir=${output_root}"ashr_like_samp_var/"
 # directory containing visualizations fo results
 visualization_dir=${output_root}"visualization_dir/"
 
+# simulated correlation causal eqtl effects directory
+correlation_causal_effect_dir=${output_root}"corr_sim_causal_eqtl_effects/"
+
+correlation_borzoi_est_effect_dir=${output_root}"corr_sim_borzoi_eqtl_effects/"
+
+correlation_est_eqtl_effects_dir=${output_root}"corr_sim_est_eqtl_effect_size_dir/"
+
+correlation_inference_results_dir=${output_root}"corr_sim_inference_results/"
+
 
 ######################
 # Run analysis
@@ -70,39 +79,25 @@ fi
 gene_ld_summary_file=${ld_dir}"gene_summary_w_ld_full2.txt"
 
 
+######################
+# Run simulations based to get correlation of predicted and observed causal effects
+######################
+if false; then
+for simulation_iter in {1..50}
+do
+	sbatch run_correlation_simulation.sh $simulation_iter $gene_ld_summary_file $correlation_causal_effect_dir $correlation_est_eqtl_effects_dir $correlation_borzoi_est_effect_dir $onek_genomes_plink_filestem $correlation_inference_results_dir
+done
+fi
+
 
 ######################
-# Run simulations
+# Run simulations based on only variance estimation
 ######################
 if false; then
 for simulation_iter in {1..50}
 do
 	sbatch run_simulation.sh $simulation_iter $gene_ld_summary_file $causal_effect_dir $est_eqtl_effect_size_dir $est_borzoi_effect_size_dir $onek_genomes_plink_filestem $ldsc_like_samp_var_dir $ashr_like_samp_var_dir
 done
-fi
-
-if false; then
-simulation_iter="1"
-sbatch run_simulation.sh $simulation_iter $gene_ld_summary_file $causal_effect_dir $est_eqtl_effect_size_dir $est_borzoi_effect_size_dir $onek_genomes_plink_filestem $ldsc_like_samp_var_dir $ashr_like_samp_var_dir
-
-simulation_iter="2"
-sbatch run_simulation.sh $simulation_iter $gene_ld_summary_file $causal_effect_dir $est_eqtl_effect_size_dir $est_borzoi_effect_size_dir $onek_genomes_plink_filestem $ldsc_like_samp_var_dir $ashr_like_samp_var_dir
-
-simulation_iter="3"
-sbatch run_simulation.sh $simulation_iter $gene_ld_summary_file $causal_effect_dir $est_eqtl_effect_size_dir $est_borzoi_effect_size_dir $onek_genomes_plink_filestem $ldsc_like_samp_var_dir $ashr_like_samp_var_dir
-
-simulation_iter="4"
-sbatch run_simulation.sh $simulation_iter $gene_ld_summary_file $causal_effect_dir $est_eqtl_effect_size_dir $est_borzoi_effect_size_dir $onek_genomes_plink_filestem $ldsc_like_samp_var_dir $ashr_like_samp_var_dir
-
-simulation_iter="5"
-sbatch run_simulation.sh $simulation_iter $gene_ld_summary_file $causal_effect_dir $est_eqtl_effect_size_dir $est_borzoi_effect_size_dir $onek_genomes_plink_filestem $ldsc_like_samp_var_dir $ashr_like_samp_var_dir
-fi
-
-
-
-simulation_iter="6"
-if false; then
-sbatch run_simulation.sh $simulation_iter $gene_ld_summary_file $causal_effect_dir $est_eqtl_effect_size_dir $est_borzoi_effect_size_dir $onek_genomes_plink_filestem $ldsc_like_samp_var_dir $ashr_like_samp_var_dir
 fi
 
 

@@ -33,7 +33,16 @@ borzoi_output_dir=${output_root}"borzoi/"
 #################
 # Run analysis
 #################
+if false; then
+for chrom_num in {1..22}; do
+	sbatch integrate_eqtl_borzoi_ld_data.sh ${borzoi_results_dir} ${plink2_genotype_data_dir} ${eqtl_sumstats_dir} ${borzoi_output_dir} ${LD_output_dir} ${eqtl_ss_output_dir} $chrom_num $gtex_v10_pc_genes_gtf
+done
+fi
 
-chrom_num="1"
 
-sh integrate_eqtl_borzoi_ld_data.sh ${borzoi_results_dir} ${plink2_genotype_data_dir} ${eqtl_sumstats_dir} ${borzoi_output_dir} ${LD_output_dir} ${eqtl_ss_output_dir} $chrom_num $gtex_v10_pc_genes_gtf
+
+
+
+
+
+

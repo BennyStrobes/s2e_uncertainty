@@ -259,16 +259,17 @@ genotype_1000G_plink_stem = sys.argv[5]
 hm3_snp_list_file = sys.argv[6]
 expr_correlation_summary_file = sys.argv[7]
 
-borzoi_effect_size_file_parts = np.asarray(['0', '1'])
+#borzoi_effect_size_file_parts = np.asarray(['0', '1'])
+borzoi_effect_size_file_parts = np.asarray(['0'])
 
 t = open(expr_correlation_summary_file,'w')
-t.write('gene_id\texpression_correlation\tmax_abs_eqtl_z\tsignal_variance\tnoise_variance\tmax_abs_borzoi\tcorrelation_bs_pvalue\texpression_correlation_z_score_pred\texpression_correlation_ridge_predictor\tmin_borzoi_pvalue\texpression_correlation_uncertainty_denom\texpression_correlation_best_sig_marginal\texpression_correlation_sign_flip_weighted\texpression_correlation_low_ld_pred\n')
+t.write('gene_id\texpression_correlation\tmax_abs_eqtl_z\tsignal_variance\tnoise_variance\tmax_abs_borzoi\tcorrelation_bs_pvalue\texpression_correlation_z_score_pred\texpression_correlation_ridge_predictor\tmin_borzoi_pvalue\texpression_correlation_uncertainty_denom\texpression_correlation_best_sig_marginal\texpression_correlation_sign_flip_weighted\texpression_correlation_low_ld_pred\tproportion_pred_corr_pair_negative\n')
 
 
 # Loop through chromosomes
 vals = []
 vals2 = []
-for chrom_num in range(1,9):
+for chrom_num in range(1,4):
 
 	print(chrom_num)
 
@@ -302,7 +303,6 @@ for chrom_num in range(1,9):
 	eqtl_ss_file = eqtl_sumstats_dir + tissue_name + '.v10.allpairs.chr' + str(chrom_num) + '.parquet'
 	eqtl_ss_obj = extract_eqtl_ss_for_this_chromosome(eqtl_ss_file, borzoi_effect_size_gene_obj)
 
-	pdb.set_trace()
 	'''
 	tmp_file = '/lab-share/CHIP-Strober-e2/Public/ben/tmp/tmper2.pkl'
 	f = open(tmp_file, "wb")
@@ -463,6 +463,21 @@ for chrom_num in range(1,9):
 		bs_corry = bs_corry_num / bs_corry_denom
 		bs_corry_pvalue = rank_based_pvalue(bs_corry)
 
+		# bs distribution on predicted expression corrs
+		# Step 1: compute quadratic form matrix
+		M = filtered_std_gene_borzoi_effects_bs.T @ R_mat @ filtered_std_gene_borzoi_effects_bs   # shape (K, K)
+		# Step 2: normalize to correlations
+		diag = np.sqrt(np.diag(M))  # shape (K,)
+		# outer product for denominator
+		denom = np.outer(diag, diag)
+		tmp_corr_mat = M / denom
+		K = tmp_corr_mat.shape[0]
+		# indices for upper triangle (excluding diagonal)
+		i, j = np.triu_indices(K, k=1)
+		# extract unique pairwise correlations
+		pairwise_corrs = tmp_corr_mat[i, j]
+		prop_neg = np.mean(pairwise_corrs <= 0)
+
 
 		filtered_std_gene_borzoi_effects_z_scored = np.mean(filtered_std_gene_borzoi_effects_bs,axis=1)/np.std(filtered_std_gene_borzoi_effects_bs,axis=1)
 		corry_z_score_pred = compute_correlation(filtered_std_gene_borzoi_effects_z_scored, filtered_std_gene_eqtl_beta, R_mat)
@@ -510,7 +525,12 @@ for chrom_num in range(1,9):
 			pdb.set_trace()
 		'''
 
-		t.write(geneid + '\t' + str(corry) + '\t' + str(max_abs_eqtl_zed) + '\t' + str(signal) + '\t' + str(noise) + '\t' + str(max_abs_borzoi) + '\t' + str(bs_corry_pvalue) + '\t' + str(corry_z_score_pred) + '\t' + str(corry_ridge_pred) + '\t' + str(np.min(borzoi_pvalues)) + '\t' + str(corry_uncertainty_den) + '\t' + str(corry_best_sig_marginal_pred) + '\t' + str(corry_sign_flip_weighted) + '\t' + str(corry_low_ld_pred) + '\n')
+		# First 4 are pos
+		if geneid == 'ENSG00000176732.7' or geneid == 'ENSG00000143653.10' or geneid == 'ENSG00000116874.12' or geneid == 'ENSG00000171488.15' or geneid == 'ENSG00000168530.16' or geneid == 'ENSG00000169418.10' or geneid == 'ENSG00000188389.11' or geneid == 'ENSG00000186092.7' or geneid == 'ENSG00000216921.9':
+			output_filer = '/lab-share/CHIP-Strober-e2/Public/ben/s2e_uncertainty/gtex_tissue_bootstrap/expression_correlation/' + geneid + '_pairwise_corrs.txt'
+			np.savetxt(output_filer, pairwise_corrs, fmt="%s", delimiter='\t')
+
+		t.write(geneid + '\t' + str(corry) + '\t' + str(max_abs_eqtl_zed) + '\t' + str(signal) + '\t' + str(noise) + '\t' + str(max_abs_borzoi) + '\t' + str(bs_corry_pvalue) + '\t' + str(corry_z_score_pred) + '\t' + str(corry_ridge_pred) + '\t' + str(np.min(borzoi_pvalues)) + '\t' + str(corry_uncertainty_den) + '\t' + str(corry_best_sig_marginal_pred) + '\t' + str(corry_sign_flip_weighted) + '\t' + str(corry_low_ld_pred) + '\t' + str(prop_neg) + '\n')
 		t.flush()
 
 		'''

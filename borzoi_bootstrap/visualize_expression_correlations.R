@@ -42,7 +42,7 @@ make_mean_correlation_standard_error_plot <- function(df) {
   mean_lb_arr <- c(mean_lb_arr, mean_corr - (1.96*se_corr))
   mean_ub_arr <- c(mean_ub_arr, mean_corr + (1.96*se_corr))
   n_gene_arr <- c(n_gene_arr, sum(indices))
-  namer <- paste0("p <= 1.0", "\n", "N=", sum(indices))
+  namer <- paste0("<= 1.0", "\n", "N=", sum(indices))
   bin_names_arr <- c(bin_names_arr, namer)
 
   indices <- abs(df$correlation_bs_pvalue) <= 0.5
@@ -53,7 +53,7 @@ make_mean_correlation_standard_error_plot <- function(df) {
   mean_lb_arr <- c(mean_lb_arr, mean_corr - (1.96*se_corr))
   mean_ub_arr <- c(mean_ub_arr, mean_corr + (1.96*se_corr))
   n_gene_arr <- c(n_gene_arr, sum(indices))
-  namer <- paste0("p <= 0.5", "\n", "N=", sum(indices))
+  namer <- paste0("<= 0.5", "\n", "N=", sum(indices))
   bin_names_arr <- c(bin_names_arr, namer)
 
 
@@ -65,7 +65,7 @@ make_mean_correlation_standard_error_plot <- function(df) {
   mean_lb_arr <- c(mean_lb_arr, mean_corr - (1.96*se_corr))
   mean_ub_arr <- c(mean_ub_arr, mean_corr + (1.96*se_corr))
   n_gene_arr <- c(n_gene_arr, sum(indices))
-  namer <- paste0("p <= 0.4", "\n", "N=", sum(indices))
+  namer <- paste0("<= 0.4", "\n", "N=", sum(indices))
   bin_names_arr <- c(bin_names_arr, namer)
 
   indices <- abs(df$correlation_bs_pvalue) <= 0.3
@@ -76,7 +76,7 @@ make_mean_correlation_standard_error_plot <- function(df) {
   mean_lb_arr <- c(mean_lb_arr, mean_corr - (1.96*se_corr))
   mean_ub_arr <- c(mean_ub_arr, mean_corr + (1.96*se_corr))
   n_gene_arr <- c(n_gene_arr, sum(indices))
-  namer <- paste0("p <= 0.3", "\n", "N=", sum(indices))
+  namer <- paste0("<= 0.3", "\n", "N=", sum(indices))
   bin_names_arr <- c(bin_names_arr, namer)
 
   indices <- abs(df$correlation_bs_pvalue) <= 0.2
@@ -87,7 +87,7 @@ make_mean_correlation_standard_error_plot <- function(df) {
   mean_lb_arr <- c(mean_lb_arr, mean_corr - (1.96*se_corr))
   mean_ub_arr <- c(mean_ub_arr, mean_corr + (1.96*se_corr))
   n_gene_arr <- c(n_gene_arr, sum(indices))
-  namer <- paste0("p <= 0.2", "\n", "N=", sum(indices))
+  namer <- paste0("<= 0.2", "\n", "N=", sum(indices))
   bin_names_arr <- c(bin_names_arr, namer)
 
   indices <- abs(df$correlation_bs_pvalue) <= 0.15
@@ -98,10 +98,140 @@ make_mean_correlation_standard_error_plot <- function(df) {
   mean_lb_arr <- c(mean_lb_arr, mean_corr - (1.96*se_corr))
   mean_ub_arr <- c(mean_ub_arr, mean_corr + (1.96*se_corr))
   n_gene_arr <- c(n_gene_arr, sum(indices))
-  namer <- paste0("p <= 0.15", "\n", "N=", sum(indices))
+  namer <- paste0("<= 0.15", "\n", "N=", sum(indices))
   bin_names_arr <- c(bin_names_arr, namer)
 
   indices <- abs(df$correlation_bs_pvalue) <= 0.1
+  corrs = df$expression_correlation[indices]
+  mean_corr = mean(corrs)
+  se_corr = sd(corrs)/sqrt(length(corrs))
+  mean_arr <- c(mean_arr, mean_corr)
+  mean_lb_arr <- c(mean_lb_arr, mean_corr - (1.96*se_corr))
+  mean_ub_arr <- c(mean_ub_arr, mean_corr + (1.96*se_corr))
+  n_gene_arr <- c(n_gene_arr, sum(indices))
+  namer <- paste0("<= 0.1", "\n", "N=", sum(indices))
+  bin_names_arr <- c(bin_names_arr, namer)
+
+
+  indices <- abs(df$correlation_bs_pvalue) <= 0.05
+  corrs = df$expression_correlation[indices]
+  mean_corr = mean(corrs)
+  se_corr = sd(corrs)/sqrt(length(corrs))
+  mean_arr <- c(mean_arr, mean_corr)
+  mean_lb_arr <- c(mean_lb_arr, mean_corr - (1.96*se_corr))
+  mean_ub_arr <- c(mean_ub_arr, mean_corr + (1.96*se_corr))
+  n_gene_arr <- c(n_gene_arr, sum(indices))
+  namer <- paste0("<= 0.05", "\n", "N=", sum(indices))
+  bin_names_arr <- c(bin_names_arr, namer)
+
+
+  df2 <- data.frame(
+    mean_correlation    = mean_arr,
+    mean_correlation_lb = mean_lb_arr,
+    mean_correlation_ub = mean_ub_arr,
+    names    = bin_names_arr,
+    n_genes = n_gene_arr
+  )
+
+
+  df2$names = factor(df2$names, levels=as.character(df2$names))
+
+  print(df2)
+  pp <- ggplot(df2, aes(x = names, y = mean_correlation)) +
+    # baseline at chance agreement
+    geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.5, color = "grey60") +
+
+    # cleaner CI + point
+    geom_pointrange(aes(ymin = mean_correlation_lb, ymax = mean_correlation_ub),
+                    color = "darkorchid2", linewidth = 0.7) +
+    geom_point(color = "darkorchid2", size = 2.4) +
+
+    figure_theme() +
+    labs(
+      x = "Bootstrap p-value",
+      y = "Average expression correlation"
+    )
+  print(pp)
+
+}
+
+
+make_mean_correlation_standard_error_plot_v2 <- function(df) {
+
+  mean_arr <- c()
+  mean_lb_arr <- c()
+  mean_ub_arr <- c()
+  n_gene_arr <- c()
+  bin_names_arr <- c()
+
+  indices <- abs(df$proportion_pred_corr_pair_negative) <= 1.0
+  corrs = df$expression_correlation[indices]
+  mean_corr = mean(corrs)
+  se_corr = sd(corrs)/sqrt(length(corrs))
+  mean_arr <- c(mean_arr, mean_corr)
+  mean_lb_arr <- c(mean_lb_arr, mean_corr - (1.96*se_corr))
+  mean_ub_arr <- c(mean_ub_arr, mean_corr + (1.96*se_corr))
+  n_gene_arr <- c(n_gene_arr, sum(indices))
+  namer <- paste0("p <= 1.0", "\n", "N=", sum(indices))
+  bin_names_arr <- c(bin_names_arr, namer)
+
+  indices <- abs(df$proportion_pred_corr_pair_negative) <= 0.5
+  corrs = df$expression_correlation[indices]
+  mean_corr = mean(corrs)
+  se_corr = sd(corrs)/sqrt(length(corrs))
+  mean_arr <- c(mean_arr, mean_corr)
+  mean_lb_arr <- c(mean_lb_arr, mean_corr - (1.96*se_corr))
+  mean_ub_arr <- c(mean_ub_arr, mean_corr + (1.96*se_corr))
+  n_gene_arr <- c(n_gene_arr, sum(indices))
+  namer <- paste0("p <= 0.5", "\n", "N=", sum(indices))
+  bin_names_arr <- c(bin_names_arr, namer)
+
+
+  indices <- abs(df$proportion_pred_corr_pair_negative) <= 0.4
+  corrs = df$expression_correlation[indices]
+  mean_corr = mean(corrs)
+  se_corr = sd(corrs)/sqrt(length(corrs))
+  mean_arr <- c(mean_arr, mean_corr)
+  mean_lb_arr <- c(mean_lb_arr, mean_corr - (1.96*se_corr))
+  mean_ub_arr <- c(mean_ub_arr, mean_corr + (1.96*se_corr))
+  n_gene_arr <- c(n_gene_arr, sum(indices))
+  namer <- paste0("p <= 0.4", "\n", "N=", sum(indices))
+  bin_names_arr <- c(bin_names_arr, namer)
+
+  indices <- abs(df$proportion_pred_corr_pair_negative) <= 0.3
+  corrs = df$expression_correlation[indices]
+  mean_corr = mean(corrs)
+  se_corr = sd(corrs)/sqrt(length(corrs))
+  mean_arr <- c(mean_arr, mean_corr)
+  mean_lb_arr <- c(mean_lb_arr, mean_corr - (1.96*se_corr))
+  mean_ub_arr <- c(mean_ub_arr, mean_corr + (1.96*se_corr))
+  n_gene_arr <- c(n_gene_arr, sum(indices))
+  namer <- paste0("p <= 0.3", "\n", "N=", sum(indices))
+  bin_names_arr <- c(bin_names_arr, namer)
+
+  indices <- abs(df$proportion_pred_corr_pair_negative) <= 0.2
+  corrs = df$expression_correlation[indices]
+  mean_corr = mean(corrs)
+  se_corr = sd(corrs)/sqrt(length(corrs))
+  mean_arr <- c(mean_arr, mean_corr)
+  mean_lb_arr <- c(mean_lb_arr, mean_corr - (1.96*se_corr))
+  mean_ub_arr <- c(mean_ub_arr, mean_corr + (1.96*se_corr))
+  n_gene_arr <- c(n_gene_arr, sum(indices))
+  namer <- paste0("p <= 0.2", "\n", "N=", sum(indices))
+  bin_names_arr <- c(bin_names_arr, namer)
+
+  indices <- abs(df$proportion_pred_corr_pair_negative) <= 0.15
+  corrs = df$expression_correlation[indices]
+  mean_corr = mean(corrs)
+  se_corr = sd(corrs)/sqrt(length(corrs))
+  mean_arr <- c(mean_arr, mean_corr)
+  mean_lb_arr <- c(mean_lb_arr, mean_corr - (1.96*se_corr))
+  mean_ub_arr <- c(mean_ub_arr, mean_corr + (1.96*se_corr))
+  n_gene_arr <- c(n_gene_arr, sum(indices))
+  namer <- paste0("p <= 0.15", "\n", "N=", sum(indices))
+  bin_names_arr <- c(bin_names_arr, namer)
+
+  indices <- abs(df$proportion_pred_corr_pair_negative) <= 0.1
   corrs = df$expression_correlation[indices]
   mean_corr = mean(corrs)
   se_corr = sd(corrs)/sqrt(length(corrs))
@@ -113,7 +243,7 @@ make_mean_correlation_standard_error_plot <- function(df) {
   bin_names_arr <- c(bin_names_arr, namer)
 
 
-  indices <- abs(df$correlation_bs_pvalue) <= 0.05
+  indices <- abs(df$proportion_pred_corr_pair_negative) <= 0.025
   corrs = df$expression_correlation[indices]
   mean_corr = mean(corrs)
   se_corr = sd(corrs)/sqrt(length(corrs))
@@ -152,6 +282,8 @@ make_mean_correlation_standard_error_plot <- function(df) {
   print(pp)
 
 }
+
+
 
 make_max_z_correlation_scatterplot <- function(df, titler, color) {
 
@@ -207,8 +339,7 @@ make_bs_distribution <- function(borzoi_bs, gene_id, color, xlim = NULL) {
              ymin = -Inf, ymax = Inf,
              fill=color,
              alpha = 0.22) +
-    geom_histogram(aes(y = after_stat(density)),
-                   bins = 30, fill = "gray80", color = "white") +
+    geom_histogram(bins = 30, fill = "gray80", color = "white") +
     #geom_density(linewidth = 0.9, alpha = 0.15) +
     geom_vline(xintercept = 0, linetype = "dashed", color='#2C5AA0', linewidth = 1) +
     #geom_vline(xintercept = mu, color = "red", linewidth = 1) +
@@ -217,7 +348,7 @@ make_bs_distribution <- function(borzoi_bs, gene_id, color, xlim = NULL) {
       title = paste0(sig_label, "\n", gene_id),
       #subtitle = paste0("Gene: ", gene_id, "\n Variant: ", variant_id),
       x = "Cross-individual expression correlation",
-      y = "No. bootstrapped samples"
+      y = "No. bootstrapped sample pairs"
     ) +
     figure_theme() +
     theme(
@@ -229,6 +360,58 @@ make_bs_distribution <- function(borzoi_bs, gene_id, color, xlim = NULL) {
 
   pp
 }
+
+
+make_bs_self_corr_distribution <- function(borzoi_bs, gene_id, color, xlim = NULL) {
+  df0 <- data.frame(borzoi_bs = borzoi_bs)
+
+  print(gene_id)
+
+  mu <- mean(borzoi_bs)
+  ci_lb <- as.numeric(quantile(borzoi_bs, probs = 0.05))
+
+  print(ci_lb)
+  print(mu)
+
+
+  # One-sided self-correlation significance:
+  # reject the null when the 95% lower bound stays above 0.
+  sig_label <- if (ci_lb > 0) "Confident prediction\nOne-sided 95% CI excludes 0" else "Noisy prediction\nOne-sided 95% CI includes 0"
+
+  # Bootstrap one-sided p-value for testing whether self-correlation is positive.
+  p_boot <- mean(borzoi_bs <= 0)
+
+  pp <- ggplot(df0, aes(x = borzoi_bs)) +
+    # Shade the one-sided 95% confidence region implied by the lower bound.
+    annotate("rect",
+             xmin = ci_lb, xmax = Inf,
+             ymin = -Inf, ymax = Inf,
+             fill=color,
+             alpha = 0.22) +
+    geom_histogram(bins = 30, fill = "gray80", color = "white") +
+    #geom_density(linewidth = 0.9, alpha = 0.15) +
+    geom_vline(xintercept = 0, linetype = "dashed", color='#2C5AA0', linewidth = 1) +
+    #geom_vline(xintercept = mu, color = "red", linewidth = 1) +
+    geom_vline(xintercept = ci_lb, color = "grey", linetype = "dotted", linewidth = 1) +
+    labs(
+      title = paste0(sig_label, "\n", gene_id),
+      #subtitle = paste0("Gene: ", gene_id, "\n Variant: ", variant_id),
+      x = "Cross-individual expression correlation",
+      y = "No. bootstrapped sample pairs"
+    ) +
+    figure_theme() +
+    theme(
+    plot.title    = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5)
+    )
+
+  if (!is.null(xlim)) pp <- pp + coord_cartesian(xlim = xlim)
+
+  pp
+}
+
+
+
 
 #####################
 # Command line args
@@ -242,7 +425,7 @@ visualize_expression_correlation_dir = args[3]
 df = read.table(expr_correlation_summary_file, header=TRUE, sep="\t")
 
 
-
+if (FALSE) {
 geneid ="ENSG00000235098.9"
 x0 <- read.table(paste0("/lab-share/CHIP-Strober-e2/Public/ben/s2e_uncertainty/gtex_tissue_bootstrap/expression_correlation/Muscle_Skeletal_", geneid, ".txt"), header=FALSE)$V1
 bs_distribution0 <- make_bs_distribution(
@@ -259,6 +442,29 @@ bs_distribution1 <- make_bs_distribution(
 joint_bs_distribution <- plot_grid(bs_distribution1, bs_distribution0, ncol = 2, labels=c("a","b"))
 
 output_file <- paste0(visualize_expression_correlation_dir, "example_bootstrapped_sampling_distribution_plots.pdf")
+ggsave(joint_bs_distribution, file=output_file,device = cairo_pdf, width=7.2, height=3.13, units="in")
+}
+
+
+
+
+# Self correlation
+geneid="ENSG00000216921.9"
+x0 <- read.table(paste0("/lab-share/CHIP-Strober-e2/Public/ben/s2e_uncertainty/gtex_tissue_bootstrap/expression_correlation/", geneid, "_pairwise_corrs.txt"), header=FALSE)$V1
+bs_distribution0 <- make_bs_self_corr_distribution(
+  x0, "FAM240C", "#E07A7A"
+)
+
+
+geneid ="ENSG00000176732.7"
+x1 <- read.table(paste0("/lab-share/CHIP-Strober-e2/Public/ben/s2e_uncertainty/gtex_tissue_bootstrap/expression_correlation/", geneid, "_pairwise_corrs.txt"), header=FALSE)$V1
+bs_distribution1 <- make_bs_self_corr_distribution(
+  x1, "PFN4","#7FBF7B"
+)
+
+joint_bs_distribution <- plot_grid(bs_distribution1, bs_distribution0, ncol = 2, labels=c("a","b"))
+
+output_file <- paste0(visualize_expression_correlation_dir, "example_bootstrapped_sampling_self_corr_distribution_plots.pdf")
 ggsave(joint_bs_distribution, file=output_file,device = cairo_pdf, width=7.2, height=3.13, units="in")
 
 
@@ -284,11 +490,10 @@ ggsave(joint_hist, file=output_file,device = cairo_pdf, width=5.2, height=3.63, 
 #####################################
 # Average correlation mean-standard error plot
 #####################################
-if (FALSE) {
 mean_correlation_standard_error_dot_plot = make_mean_correlation_standard_error_plot(df)
 output_file <- paste0(visualize_expression_correlation_dir, "average_expression_correlation_mean_se.pdf")
 ggsave(mean_correlation_standard_error_dot_plot, file=output_file,device = cairo_pdf, width=7.2, height=3.63, units="in")
-}
+
 
 
 if (FALSE) {
@@ -315,8 +520,5 @@ joint_scatter <- plot_grid(corr_neg_log10p_scatter_all_genes, corr_neg_log10p_sc
 output_file <- paste0(visualize_expression_correlation_dir, "neg_log10_p_vs_correlation_scatter.pdf")
 ggsave(joint_scatter, file=output_file,device = cairo_pdf, width=7.2, height=3.43, units="in")
 }
-
-
-
 
 
