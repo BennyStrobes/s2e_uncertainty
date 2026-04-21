@@ -64,10 +64,11 @@ fi
 ####################################################
 # Part 4: Simulate estimated eqtl effect sizes
 ####################################################
+if false; then
 echo "PART 4"
 ld_corr_output_stem=${inf_output_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_"${n_anno}"_anno_ld_corr_results"
 python run_ld_corr.py $est_borzoi_effect_size_file $est_eqtl_effect_size_file $sim_variant_gene_annotation_file $onek_genomes_plink_filestem $ld_corr_output_stem
-
+fi
 
 
 

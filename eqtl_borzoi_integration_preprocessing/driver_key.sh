@@ -28,7 +28,7 @@ borzoi_output_dir=${output_root}"borzoi/"
 
 
 
-
+# This was primarily used for Alexis-based analysis
 
 #################
 # Run analysis

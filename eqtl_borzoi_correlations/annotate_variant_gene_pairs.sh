@@ -1,0 +1,21 @@
+#!/bin/bash
+#SBATCH -t 0-1:00                         # Runtime in D-HH:MM format
+#SBATCH -p bch-compute                        # Partition to run in
+#SBATCH --mem=10GB 
+
+
+
+borzoi_effect_file="${1}"
+anno_method="${2}"
+borzoi_annotation_file="${3}"
+eqtl_sumstats_dir="${4}"
+tissue_name="${5}"
+
+
+source ~/.bashrc
+conda activate plink_env
+
+
+echo $borzoi_annotation_file
+
+python annotate_variant_gene_pairs.py $borzoi_effect_file $anno_method $borzoi_annotation_file $eqtl_sumstats_dir $tissue_name

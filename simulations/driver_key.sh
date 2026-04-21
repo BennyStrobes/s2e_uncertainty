@@ -55,6 +55,8 @@ correlation_est_eqtl_effects_dir=${output_root}"corr_sim_est_eqtl_effect_size_di
 
 correlation_inference_results_dir=${output_root}"corr_sim_inference_results/"
 
+correlation_visualization_dir=${output_root}"corr_visualization/"
+
 
 ######################
 # Run analysis
@@ -87,6 +89,12 @@ for simulation_iter in {1..50}
 do
 	sbatch run_correlation_simulation.sh $simulation_iter $gene_ld_summary_file $correlation_causal_effect_dir $correlation_est_eqtl_effects_dir $correlation_borzoi_est_effect_dir $onek_genomes_plink_filestem $correlation_inference_results_dir
 done
+fi
+
+if false; then
+source ~/.bashrc
+conda activate plink_env
+Rscript visualize_corr_simulation_results.R $correlation_inference_results_dir $correlation_borzoi_est_effect_dir $correlation_visualization_dir
 fi
 
 
