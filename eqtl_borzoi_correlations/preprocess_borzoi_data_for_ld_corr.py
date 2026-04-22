@@ -147,15 +147,7 @@ borzoi_target_index = int(sys.argv[3])
 target_tissue = sys.argv[4]
 target_sample = sys.argv[5]
 borzoi_output_dir = sys.argv[6]
-eqtl_vg_pairs_file = sys.argv[7]
-eqtl_sumstats_dir = sys.argv[8]
 
-
-# Create mapping from variant-gene pairs to auxiliary info
-vg_pair_info = extract_info_on_each_variant_gene_pair(eqtl_sumstats_dir, target_tissue)
-
-# List of eqtl variant gene pairs
-eqtl_vg_pairs = load_in_eqtl_vg_pairs(eqtl_vg_pairs_file)
 
 # Extract dictionary list of protein coding genes
 pc_genes = extract_dictionary_list_of_protein_coding_genes(gtex_v10_pc_genes_gtf)
@@ -183,14 +175,6 @@ for snp_chrom, snp_pos, snp_ids, gene_ids, borzoi_effects in stream_borzoi_resul
 		if chrom_string.startswith('chr'):
 			chrom_string = chrom_string.split('hr')[1]
 
-		if variant_id + ':' + gene_name not in eqtl_vg_pairs:
-			continue
-
-		# Convert to Borzoi standardized effect size
-		maf = vg_pair_info[variant_id + ':' + gene_name]
-		if maf == 0.0:
-			maf = 0.001
-		borzoi_std_effect_size = np.sqrt(2.0*maf*(1.0-maf))*borzoi_effect_size
 
 		t.write(gene_name + '\t' + variant_id + '\t' + chrom_string + '\t' + str(pos) + '\t' + var_info[2] + '\t' + var_info[3] + '\t' + str(borzoi_effect_size) + '\n')
 

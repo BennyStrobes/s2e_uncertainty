@@ -11,7 +11,7 @@ import time
 
 
 
-def create_mapping_from_gene_id_to_causal_effects(est_borzoi_effect_size_file, variant_id_to_maf, standardize=True):
+def create_mapping_from_gene_id_to_causal_effects(est_borzoi_effect_size_file, variant_id_to_genotype_sdev, standardize=True):
 	f = gzip.open(est_borzoi_effect_size_file,'rt')
 	mapping = {}
 	head_count = 0
@@ -31,14 +31,19 @@ def create_mapping_from_gene_id_to_causal_effects(est_borzoi_effect_size_file, v
 			print('assumption eroroor')
 			pdb.set_trace()
 		effect = float(data[6])
+
+		if var_id not in variant_id_to_genotype_sdev:
+			continue
+
 		if gene_id not in mapping:
 			mapping[gene_id] = {}
 		if var_id in mapping[gene_id]:
 			print('variatn repeat assumption erororo')
 			pdb.set_trace()
-		maf = variant_id_to_maf[var_id]
+
+		geno_sdev = variant_id_to_genotype_sdev[var_id]
 		if standardize:
-			effect = effect*np.sqrt(2.0*maf*(1.0-maf))
+			effect = effect*geno_sdev
 
 		mapping[gene_id][var_id] = (gene_id, var_id, chrom_num, snp_pos, a0, a1, effect)
 	f.close()
@@ -76,8 +81,8 @@ def create_mapping_from_gene_id_to_variant_gene_annotations(sim_variant_gene_ann
 	return mapping, anno_names
 
 
-def create_mapping_from_gene_id_to_est_eqtl_effect_sizes(est_eqtl_effect_size_file, chi_sq_thresh, threshold_snps=True, threshold_genes=False):	
-	variant_id_to_maf = {}
+def create_mapping_from_gene_id_to_est_eqtl_effect_sizes(est_eqtl_effect_size_file):	
+	variant_id_to_geno_sdev = {}
 	f = gzip.open(est_eqtl_effect_size_file,'rt')
 	mapping = {}
 	head_count = 0
@@ -101,26 +106,22 @@ def create_mapping_from_gene_id_to_est_eqtl_effect_sizes(est_eqtl_effect_size_fi
 		se = float(data[7])
 		eqtl_sample_size = float(data[8])
 		maf = float(data[9])
-		variant_id_to_maf[var_id] = maf
-		desired_se = np.sqrt(1.0/eqtl_sample_size)
-		zed = effect/se
-		if np.square(zed) > chi_sq_thresh:
-			bad_genes[gene_id] = 1
-			if threshold_snps:
-				continue
+		if len(data) < 12:
+			genotype_sdev = np.sqrt(2.0*maf*(1.0-maf))
+		else:
+			genotype_sdev = float(data[11])
+
+		std_effect = effect*genotype_sdev
+		std_se = se*genotype_sdev
+		variant_id_to_geno_sdev[var_id] = genotype_sdev
 		if gene_id not in mapping:
 			mapping[gene_id] = {}
-		std_effect = zed*desired_se
 		if var_id in mapping[gene_id]:
 			print('repeat snp error')
 			pdb.set_trace()
-		mapping[gene_id][var_id] = (gene_id, var_id, chrom_num, pos, a0, a1, std_effect, desired_se)
+		mapping[gene_id][var_id] = (gene_id, var_id, chrom_num, pos, a0, a1, std_effect, std_se)
 	f.close()
-	if threshold_genes:
-		for gene in [*bad_genes]:
-			mapping.pop(gene, None)
-
-	return mapping, variant_id_to_maf
+	return mapping, variant_id_to_geno_sdev
 
 def create_mapping_from_variant_id_to_genotype_index(ordered_snps):
 	mapping = {}
@@ -228,7 +229,7 @@ def extract_gene_chrom_num(var_id_to_est_borzoi_effects):
 	chrom_num = var_id_to_est_borzoi_effects[var_id][2]
 	return chrom_num
 
-def generate_gene_ld_means(gene_id_to_est_borzoi_effects, gene_id_to_est_eqtl_effects, gene_id_to_variant_gene_anno, onek_genomes_plink_filestem, anno_names):
+def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_effects_unstandardized, gene_id_to_est_eqtl_effects, gene_id_to_variant_gene_anno, onek_genomes_plink_filestem, anno_names, genotype_sample_indices):
 	# Initialize output object
 	gene_to_ld_means = {}
 	
@@ -277,6 +278,8 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects, gene_id_to_est_eqtl_ef
 			eqtl_effects, eqtl_variant_alleles, eqtl_effect_ses = load_in_snp_gene_eqtl_data(ordered_cis_variants, gene_id_to_est_eqtl_effects[gene_id])
 			# Borzoi
 			borzoi_effects, borzoi_variant_alleles = load_in_snp_gene_data(ordered_cis_variants, gene_id_to_est_borzoi_effects[gene_id])
+			borzoi_effects_unstandardized, borzoi_variant_alleles_unstandardized = load_in_snp_gene_data(ordered_cis_variants, gene_id_to_est_borzoi_effects_unstandardized[gene_id])
+
 			# Anno
 			variant_anno, borzoi_anno_variant_alleles = load_in_snp_gene_anno_data(ordered_cis_variants, gene_id_to_variant_gene_anno[gene_id], len(anno_names))
 
@@ -294,6 +297,7 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects, gene_id_to_est_eqtl_ef
 				if np.isnan(borzoi_effects[var_index]) == False:
 					if borzoi_variant_alleles[var_index,:][0] == geno_alleles[1]:
 						borzoi_effects[var_index] = -1.0*borzoi_effects[var_index]
+						borzoi_effects_unstandardized[var_index] = -1.0*borzoi_effects_unstandardized[var_index]
 				if borzoi_variant_alleles[var_index,:][0] != borzoi_anno_variant_alleles[var_index,:][0]:
 					print('annotation alllele assumption erororo')
 					pdb.set_trace()
@@ -301,7 +305,7 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects, gene_id_to_est_eqtl_ef
 			# Extract genotype
 			cis_genotype_indices = np.asarray(cis_genotype_indices)
 			# Extract genotype matrix
-			geno_mat = G[cis_genotype_indices,:].compute()
+			geno_mat = (G[cis_genotype_indices,:].compute())[:, genotype_sample_indices]
 			row_means = np.nanmean(geno_mat, axis=1)
 			nan_rows, nan_cols = np.where(np.isnan(geno_mat))
 			geno_mat[nan_rows, nan_cols] = row_means[nan_rows]
@@ -316,6 +320,7 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects, gene_id_to_est_eqtl_ef
 			# B. on borzoi end
 			observed_borzoi_indices = np.isnan(borzoi_effects) == False
 			borzoi_effects = borzoi_effects[observed_borzoi_indices]
+			borzoi_effects_unstandardized = borzoi_effects_unstandardized[observed_borzoi_indices]
 			variant_anno = variant_anno[observed_borzoi_indices, :]
 			LD = LD[:, observed_borzoi_indices]
 
@@ -328,6 +333,7 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects, gene_id_to_est_eqtl_ef
 			gene_to_ld_means[gene_id]['eQTL_effect_sizes'] = eqtl_effects
 			gene_to_ld_means[gene_id]['eQTL_effect_ses'] = eqtl_effect_ses
 			gene_to_ld_means[gene_id]['borzoi_effects'] = borzoi_effects
+			gene_to_ld_means[gene_id]['borzoi_effects_unstandardized'] = borzoi_effects_unstandardized
 			gene_to_ld_means[gene_id]['variant_anno'] = variant_anno
 			gene_to_ld_means[gene_id]['ld_means'] = LD @ (variant_anno * borzoi_effects[:, None])
 			gene_to_ld_means[gene_id]['ld_scores'] = (LD**2) @ variant_anno
@@ -390,6 +396,32 @@ def compute_borzoi_variances(gene_id_to_ld_means, ordered_gene_names):
 
 	return np.asarray(avg_pred_vars)
 
+def compute_unstandardized_borzoi_variances(gene_id_to_ld_means, ordered_gene_names):
+	yy = []
+	xx = []
+	annos = []
+	for gene_name in ordered_gene_names:
+		yy.append(np.square(gene_id_to_ld_means[gene_name]['borzoi_effects_unstandardized']))
+		xx.append(gene_id_to_ld_means[gene_name]['variant_anno'])
+	yy = np.hstack(yy)
+	xx = np.vstack(xx)
+
+	valid_rows = np.isfinite(yy) & np.all(np.isfinite(xx), axis=1)
+	yy = yy[valid_rows]
+	xx = xx[valid_rows, :]
+
+	borzoi_var_coefs, _, _, _ = np.linalg.lstsq(xx, yy, rcond=None)
+	
+	pred_vars = np.dot(xx, borzoi_var_coefs)
+	avg_pred_vars = []
+	for anno_iter in range(xx.shape[1]):
+
+		averager = np.sum(xx[:, anno_iter]*pred_vars)/np.sum(xx[:, anno_iter])
+		avg_pred_vars.append(averager)
+
+	return np.asarray(avg_pred_vars)
+
+
 def compute_eqtl_variances(gene_id_to_ld_means, ordered_gene_names):
 	yy = []
 	xx = []
@@ -423,9 +455,10 @@ def compute_eqtl_variances(gene_id_to_ld_means, ordered_gene_names):
 def run_ld_corr(ordered_gene_names, gene_id_to_ld_means):
 	avg_calibration_slopes = compute_calibration_coefs(gene_id_to_ld_means, ordered_gene_names)
 	avg_borzoi_variances = compute_borzoi_variances(gene_id_to_ld_means, ordered_gene_names)
+	avg_unstandardized_borzoi_variances = compute_unstandardized_borzoi_variances(gene_id_to_ld_means, ordered_gene_names)
 	avg_per_snp_h2 = compute_eqtl_variances(gene_id_to_ld_means, ordered_gene_names)
 
-	return avg_calibration_slopes, avg_per_snp_h2, avg_borzoi_variances
+	return avg_calibration_slopes, avg_per_snp_h2, avg_borzoi_variances, avg_unstandardized_borzoi_variances
 
 
 
@@ -441,28 +474,36 @@ est_borzoi_effect_size_file = sys.argv[1]
 est_eqtl_effect_size_file = sys.argv[2]
 sim_variant_gene_annotation_file = sys.argv[3]
 onek_genomes_plink_filestem = sys.argv[4]
-ld_corr_output_stem = sys.argv[5]
-chi_sq_thresh = float(sys.argv[6])
+genotype_sample_mapping_file = sys.argv[5]
+ld_corr_output_stem = sys.argv[6]
+
+
 
 ##############################
 # Load in data
 ##############################
 
 # Create mapping from gene id to vector of est (standardized) eqtl effect sizes
-gene_id_to_est_eqtl_effects, variant_id_to_maf = create_mapping_from_gene_id_to_est_eqtl_effect_sizes(est_eqtl_effect_size_file, chi_sq_thresh)
+gene_id_to_est_eqtl_effects, variant_id_to_genotype_sdev = create_mapping_from_gene_id_to_est_eqtl_effect_sizes(est_eqtl_effect_size_file)
+
 
 # Create mapping from gene id to vector of est borzoi effects
-gene_id_to_est_borzoi_effects = create_mapping_from_gene_id_to_causal_effects(est_borzoi_effect_size_file, variant_id_to_maf,standardize=True)
+gene_id_to_est_borzoi_effects = create_mapping_from_gene_id_to_causal_effects(est_borzoi_effect_size_file, variant_id_to_genotype_sdev,standardize=True)
+gene_id_to_est_borzoi_effects_unstandardized = create_mapping_from_gene_id_to_causal_effects(est_borzoi_effect_size_file, variant_id_to_genotype_sdev,standardize=False)
+
 
 # Create mapping from gene id to vector of variant-gene annotations
 gene_id_to_variant_gene_anno, anno_names = create_mapping_from_gene_id_to_variant_gene_annotations(sim_variant_gene_annotation_file)
 
+# Load in genotype sample indices (for this tissue) to achieve in sample ld
+genotype_sample_indices = (np.loadtxt(genotype_sample_mapping_file)).astype(int)
 
 # Generate per gene ld-means
-gene_id_to_ld_means = generate_gene_ld_means(gene_id_to_est_borzoi_effects, gene_id_to_est_eqtl_effects, gene_id_to_variant_gene_anno, onek_genomes_plink_filestem, anno_names)
+gene_id_to_ld_means = generate_gene_ld_means(gene_id_to_est_borzoi_effects, gene_id_to_est_borzoi_effects_unstandardized, gene_id_to_est_eqtl_effects, gene_id_to_variant_gene_anno, onek_genomes_plink_filestem, anno_names, genotype_sample_indices)
 del gene_id_to_est_eqtl_effects
 del gene_id_to_variant_gene_anno
 del gene_id_to_est_borzoi_effects
+del gene_id_to_est_borzoi_effects_unstandardized
 
 '''
 # TO DELETE
@@ -482,25 +523,28 @@ with open(pickle_file, 'rb') as f:
 
 # Run standard regression
 ordered_gene_names = np.asarray([*gene_id_to_ld_means])
-avg_calibration_slopes, avg_per_snp_eqtl_h2, avg_borzoi_variances = run_ld_corr(ordered_gene_names, gene_id_to_ld_means)
+avg_calibration_slopes, avg_per_snp_eqtl_h2, avg_borzoi_variances, avg_unstandardized_borzoi_variances = run_ld_corr(ordered_gene_names, gene_id_to_ld_means)
 
 # Bootstrap estimates!
 n_bs = 100
 bs_calibration_slopes = []
 bs_per_snp_eqtl_h2 = []
 bs_borzoi_variances = []
+bs_unstandardized_borzoi_variances = []
 for bs_iter in range(n_bs):
 	print(bs_iter)
 	bs_genes = np.random.choice(ordered_gene_names, size=len(ordered_gene_names), replace=True)
-	tmp_bs_calibration_slopes, tmp_bs_per_snp_eqtl_h2, tmp_bs_borzoi_variances = run_ld_corr(bs_genes, gene_id_to_ld_means)
+	tmp_bs_calibration_slopes, tmp_bs_per_snp_eqtl_h2, tmp_bs_borzoi_variances, tmp_bs_unstandardized_borzoi_variances = run_ld_corr(bs_genes, gene_id_to_ld_means)
 
 	bs_calibration_slopes.append(tmp_bs_calibration_slopes)
 	bs_per_snp_eqtl_h2.append(tmp_bs_per_snp_eqtl_h2)
 	bs_borzoi_variances.append(tmp_bs_borzoi_variances)
+	bs_unstandardized_borzoi_variances.append(tmp_bs_unstandardized_borzoi_variances)
 
 bs_calibration_slopes = np.asarray(bs_calibration_slopes)
 bs_per_snp_eqtl_h2 = np.asarray(bs_per_snp_eqtl_h2)
 bs_borzoi_variances = np.asarray(bs_borzoi_variances)
+bs_unstandardized_borzoi_variances = np.asarray(bs_unstandardized_borzoi_variances)
 
 # Compute correlation information
 observed_corr = np.full(len(anno_names), np.nan)
@@ -524,20 +568,20 @@ for bs_iter in range(bs_calibration_slopes.shape[0]):
 
 results_output_file = ld_corr_output_stem + '_bootstrap_summary.txt'
 with open(results_output_file, 'w') as t:
-	t.write('sample_label\tsample_iter\tannotation_name\tcalibration_slope\tper_snp_eqtl_h2\tborzoi_variance\tcorrelation\n')
+	t.write('sample_label\tsample_iter\tannotation_name\tcalibration_slope\tper_snp_eqtl_h2\tborzoi_variance\tunstandardized_borzoi_variance\tcorrelation\n')
 	for anno_iter, anno_name in enumerate(anno_names):
-		t.write('observed\t-1\t' + str(anno_name) + '\t' + str(avg_calibration_slopes[anno_iter]) + '\t' + str(avg_per_snp_eqtl_h2[anno_iter]) + '\t' + str(avg_borzoi_variances[anno_iter]) + '\t' + str(observed_corr[anno_iter]) + '\n')
+		t.write('observed\t-1\t' + str(anno_name) + '\t' + str(avg_calibration_slopes[anno_iter]) + '\t' + str(avg_per_snp_eqtl_h2[anno_iter]) + '\t' + str(avg_borzoi_variances[anno_iter]) + '\t' + str(avg_unstandardized_borzoi_variances[anno_iter]) + '\t' + str(observed_corr[anno_iter]) + '\n')
 
 	for bs_iter in range(n_bs):
 		for anno_iter, anno_name in enumerate(anno_names):
-			t.write('bootstrap\t' + str(bs_iter) + '\t' + str(anno_name) + '\t' + str(bs_calibration_slopes[bs_iter, anno_iter]) + '\t' + str(bs_per_snp_eqtl_h2[bs_iter, anno_iter]) + '\t' + str(bs_borzoi_variances[bs_iter, anno_iter]) + '\t' + str(bs_corr[bs_iter, anno_iter]) + '\n')
+			t.write('bootstrap\t' + str(bs_iter) + '\t' + str(anno_name) + '\t' + str(bs_calibration_slopes[bs_iter, anno_iter]) + '\t' + str(bs_per_snp_eqtl_h2[bs_iter, anno_iter]) + '\t' + str(bs_borzoi_variances[bs_iter, anno_iter]) + '\t' + str(bs_unstandardized_borzoi_variances[bs_iter, anno_iter]) + '\t' + str(bs_corr[bs_iter, anno_iter]) + '\n')
 
 summary_stats_output_file = ld_corr_output_stem + '_bootstrap_stats.txt'
 with open(summary_stats_output_file, 'w') as t:
 	t.write('annotation_name\toutput_name\tmean\tbootstrapped_mean\tbootstrap_se\tgaussian_z_score\tempirical_ci_lower\tempirical_ci_upper\n')
-	output_names = ['calibration_slope', 'per_snp_eqtl_h2', 'borzoi_variance', 'correlation']
-	observed_mat = np.vstack((avg_calibration_slopes, avg_per_snp_eqtl_h2, avg_borzoi_variances, observed_corr)).T
-	bootstrap_mats = [bs_calibration_slopes, bs_per_snp_eqtl_h2, bs_borzoi_variances, bs_corr]
+	output_names = ['calibration_slope', 'per_snp_eqtl_h2', 'borzoi_variance', 'unstandardized_borzoi_variance', 'correlation']
+	observed_mat = np.vstack((avg_calibration_slopes, avg_per_snp_eqtl_h2, avg_borzoi_variances, avg_unstandardized_borzoi_variances, observed_corr)).T
+	bootstrap_mats = [bs_calibration_slopes, bs_per_snp_eqtl_h2, bs_borzoi_variances, bs_unstandardized_borzoi_variances, bs_corr]
 	for anno_iter, anno_name in enumerate(anno_names):
 		for output_iter, output_name in enumerate(output_names):
 			bootstrap_distribution = bootstrap_mats[output_iter][:, anno_iter]

@@ -11,10 +11,10 @@ borzoi_gtex_target_names_file=${borzoi_results_dir}"targets_gtex_only_ordered.tx
 borzoi_gtex_independent_target_names_file=${borzoi_results_dir}"targets_gtex_only_independent_ordered.txt"
 
 # Directory containing genotype data
-plink2_genotype_data_dir="/lab-share/CHIP-Strober-e2/Public/ben/process_gtex_genotype_data/processed_genotype/"
+processed_genotype_data_dir="/lab-share/CHIP-Strober-e2/Public/ben/s2e_uncertainty/gtex_eqtl_expression_processing/plink_processed_genotype/"
 
 # Directory containing eQTL summary statistics
-eqtl_sumstats_dir="/lab-share/CHIP-Strober-e2/Public/GTEx/eqtl_sumstats/"
+eqtl_sumstats_dir="/lab-share/CHIP-Strober-e2/Public/ben/s2e_uncertainty/gtex_eqtl_expression_processing/eqtl_results/"
 
 # Gtex v10 protein coding genes
 gtex_v10_pc_genes_gtf="/lab-share/CHIP-Strober-e2/Public/gene_annotation_files/gencode.v39.gtex.protein_coding.genes.gtf"
@@ -27,9 +27,7 @@ gtex_v10_pc_genes_gtf="/lab-share/CHIP-Strober-e2/Public/gene_annotation_files/g
 # Output root directory
 output_root="/lab-share/CHIP-Strober-e2/Public/ben/s2e_uncertainty/eqtl_borzoi_correlations/"
 
-eqtl_ss_output_dir=${output_root}"processed_marginal_eqtl_sumstats/"
 borzoi_output_dir=${output_root}"processed_borzoi/"
-genotype_output_dir=${output_root}"processed_genotype/"
 ld_corr_results_output_dir=${output_root}"ld_corr_results/"
 
 bayesian_ld_corr_processed_data_dir=${output_root}"bayesian_ld_corr_processed_data/"
@@ -50,98 +48,102 @@ visualization_dir=${output_root}"visualization/"
 #################
 
 #####
-# 1. eQTLs
-if false; then
-tail -n +2 "$borzoi_gtex_independent_target_names_file" | while IFS=$'\t' read -r orig_target_index borzoi_target_index target_identifier target_description gtex_tissue; do
-	sbatch preprocess_eqtl_data_for_ld_corr.sh $gtex_v10_pc_genes_gtf $eqtl_sumstats_dir $gtex_tissue $eqtl_ss_output_dir
-done
-fi
-
-
+# 1. eQTLs have already been processed
 
 #####
 # 2. Borzoi effects
 if false; then
 tail -n +2 "$borzoi_gtex_independent_target_names_file" | while IFS=$'\t' read -r orig_target_index borzoi_target_index target_identifier target_description gtex_tissue; do
-	eqtl_vg_pairs_file=$eqtl_ss_output_dir${gtex_tissue}"_eqtl_sumstats.txt.gz"
-	sbatch preprocess_borzoi_data_for_ld_corr.sh $gtex_v10_pc_genes_gtf $borzoi_results_dir $borzoi_target_index $gtex_tissue $target_identifier $borzoi_output_dir $eqtl_vg_pairs_file $eqtl_sumstats_dir
+	sbatch preprocess_borzoi_data_for_ld_corr.sh $gtex_v10_pc_genes_gtf $borzoi_results_dir $borzoi_target_index $gtex_tissue $target_identifier $borzoi_output_dir
 done
 fi
 
 
-borzoi_target_index="10"
-target_tissue="Whole_Blood"
-target_sample="GTEX-1LB8K-0005-SM-DIPED.1"
-eqtl_vg_pairs_file=$eqtl_ss_output_dir${target_tissue}"_eqtl_sumstats.txt.gz"
-if false; then
-sbatch preprocess_borzoi_data_for_ld_corr.sh $gtex_v10_pc_genes_gtf $borzoi_results_dir $borzoi_target_index $target_tissue $target_sample $borzoi_output_dir $eqtl_vg_pairs_file $eqtl_sumstats_dir
-fi
-
-borzoi_target_index="47"
-target_tissue="Muscle_Skeletal"
-target_sample="GTEX-13QJ3-0726-SM-5SI68.1"
-eqtl_vg_pairs_file=$eqtl_ss_output_dir${target_tissue}"_eqtl_sumstats.txt.gz"
-if false; then
-sh preprocess_borzoi_data_for_ld_corr.sh $gtex_v10_pc_genes_gtf $borzoi_results_dir $borzoi_target_index $target_tissue $target_sample $borzoi_output_dir $eqtl_vg_pairs_file $eqtl_sumstats_dir
-fi
-
-
-
 #####
 # 3. Annotation effects
+if false; then
+tail -n +2 "$borzoi_gtex_independent_target_names_file" | while IFS=$'\t' read -r orig_target_index borzoi_target_index target_sample target_description target_tissue; do
+	borzoi_effect_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_borzoi_effects.txt.gz"
+
+	anno_method="borzoi_magnitude_bins"
+	borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
+	eqtl_sumstats_file=$eqtl_sumstats_dir"eqtl_results_"${target_tissue}"_sumstats.txt.gz"
+	sbatch annotate_variant_gene_pairs.sh $borzoi_effect_file $anno_method $borzoi_annotation_file $eqtl_sumstats_file $target_tissue
+
+	anno_method="af_bins"
+	borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
+	eqtl_sumstats_file=$eqtl_sumstats_dir"eqtl_results_"${target_tissue}"_sumstats.txt.gz"
+	sbatch annotate_variant_gene_pairs.sh $borzoi_effect_file $anno_method $borzoi_annotation_file $eqtl_sumstats_file $target_tissue
+
+	anno_method="dist_to_tss_bins"
+	borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
+	eqtl_sumstats_file=$eqtl_sumstats_dir"eqtl_results_"${target_tissue}"_sumstats.txt.gz"
+	sbatch annotate_variant_gene_pairs.sh $borzoi_effect_file $anno_method $borzoi_annotation_file $eqtl_sumstats_file $target_tissue
+done
+fi
+
+
+
+
+anno_methods=("borzoi_magnitude_bins" "dist_to_tss_bins" "strand_dist_to_tss_bins" "af_bins" "borzoi_magnitude_binsXaf_bins" "borzoi_magnitude_binsXdist_to_tss_bins")
+if false; then
 target_tissue="Whole_Blood"
 target_sample="GTEX-1LB8K-0005-SM-DIPED.1"
 borzoi_effect_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_borzoi_effects.txt.gz"
-
-anno_method="borzoi_magnitude_bins"
-borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
-if false; then
-sh annotate_variant_gene_pairs.sh $borzoi_effect_file $anno_method $borzoi_annotation_file $eqtl_sumstats_dir $target_tissue
+eqtl_sumstats_file=$eqtl_sumstats_dir"eqtl_results_"${target_tissue}"_sumstats.txt.gz"
+for anno_method in "${anno_methods[@]}"; do
+	borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
+	sbatch annotate_variant_gene_pairs.sh $borzoi_effect_file $anno_method $borzoi_annotation_file $eqtl_sumstats_file $target_tissue
+done
 fi
 
-target_tissue="Muscle_Skeletal"
-target_sample="GTEX-13QJ3-0726-SM-5SI68.1"
-borzoi_effect_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_borzoi_effects.txt.gz"
-if false; then
-anno_method="borzoi_magnitude_bins"
-borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
-sbatch annotate_variant_gene_pairs.sh $borzoi_effect_file $anno_method $borzoi_annotation_file $eqtl_sumstats_dir $target_tissue
-
-anno_method="af_bins"
-borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
-sbatch annotate_variant_gene_pairs.sh $borzoi_effect_file $anno_method $borzoi_annotation_file $eqtl_sumstats_dir $target_tissue
-
-anno_method="dist_to_tss_bins"
-borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
-sbatch annotate_variant_gene_pairs.sh $borzoi_effect_file $anno_method $borzoi_annotation_file $eqtl_sumstats_dir $target_tissue
-fi
-
-#####
-# 4. Get plink files
-if false; then
-sh generate_plink_genotype_files.sh $plink2_genotype_data_dir $genotype_output_dir
-fi
 
 
 
 #################
 # Run LD-corr
 #################
+anno_methods=("borzoi_magnitude_bins" "dist_to_tss_bins" "strand_dist_to_tss_bins" "af_bins" "borzoi_magnitude_binsXaf_bins" "borzoi_magnitude_binsXdist_to_tss_bins")
+if false; then
 target_tissue="Whole_Blood"
 target_sample="GTEX-1LB8K-0005-SM-DIPED.1"
-anno_method="borzoi_magnitude_bins"
+for anno_method in "${anno_methods[@]}"; do
+	eqtl_sumstats_file=$eqtl_sumstats_dir"eqtl_results_"${target_tissue}"_sumstats.txt.gz"
+	borzoi_effect_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_borzoi_effects.txt.gz"
+	borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
+	genotype_stem=$processed_genotype_data_dir"gtex_v9_eqtl_chr"
+	genotype_sample_mapping_file=$processed_genotype_data_dir"genotype_sample_mapping_to_"${target_tissue}"_expression_samples.txt"
 
 
-eqtl_effects_file=$eqtl_ss_output_dir${target_tissue}"_eqtl_sumstats.txt.gz"
-borzoi_effect_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_borzoi_effects_standardized.txt.gz"
-borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
-genotype_stem=$genotype_output_dir"gtex_v9_eqtl_chr"
-
-
-ld_corr_output_stem=${ld_corr_results_output_dir}"ld_corr_results_"${target_tissue}"_"${target_sample}"_"${anno_method}
-if false; then
-sbatch run_ld_corr.sh $borzoi_effect_file $eqtl_effects_file $borzoi_annotation_file $genotype_stem $ld_corr_output_stem
+	ld_corr_output_stem=${ld_corr_results_output_dir}"ld_corr_results_"${target_tissue}"_"${target_sample}"_"${anno_method}
+	sbatch run_ld_corr.sh $borzoi_effect_file $eqtl_sumstats_file $borzoi_annotation_file $genotype_stem $genotype_sample_mapping_file $ld_corr_output_stem
+done
 fi
+
+
+
+
+
+
+
+
+#################
+# Run Bayesian LD corr
+#################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 target_tissue="Muscle_Skeletal"
@@ -322,7 +324,6 @@ source ~/.bashrc
 conda activate plink_env
 Rscript visualize_correlation_results.R ${ld_corr_results_output_dir} $visualization_dir
 fi
-
 
 
 

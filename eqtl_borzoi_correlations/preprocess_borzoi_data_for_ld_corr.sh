@@ -13,8 +13,6 @@ borzoi_target_index="${3}"
 target_tissue="${4}"
 target_sample="${5}"
 borzoi_output_dir="${6}"
-eqtl_vg_pairs_file="${7}"
-eqtl_sumstats_dir="${8}"
 
 source ~/.bashrc
 conda activate plink_env
@@ -22,4 +20,4 @@ conda activate plink_env
 
 echo $target_tissue"_"${target_sample}
 
-python preprocess_borzoi_data_for_ld_corr.py $gtex_v10_pc_genes_gtf $borzoi_results_dir $borzoi_target_index $target_tissue $target_sample $borzoi_output_dir $eqtl_vg_pairs_file $eqtl_sumstats_dir
+python preprocess_borzoi_data_for_ld_corr.py $gtex_v10_pc_genes_gtf $borzoi_results_dir $borzoi_target_index $target_tissue $target_sample $borzoi_output_dir

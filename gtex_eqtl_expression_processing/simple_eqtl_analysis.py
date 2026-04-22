@@ -30,7 +30,11 @@ def extract_dictionary_list_of_protein_coding_genes(pc_genes_gtf):
 		if ens_id.startswith('ENSG') == False:
 			print('assumption oernroro')
 			pdb.set_trace()
-		dicti[ens_id.split('.')[0]] = 1
+		strand = data[6]
+		if strand not in ['+', '-']:
+			print('assumption oerororo')
+			pdb.set_trace()
+		dicti[ens_id.split('.')[0]] = strand
 
 	f.close()
 
@@ -248,6 +252,8 @@ for chrom_num in range(1,23):
 		if short_gene_id not in eqtl_data_obj:
 			continue
 
+		gene_strand = pc_genes[short_gene_id]
+
 		# Extract relevent fields for gene
 		tss = int(data[2])
 		expr_vec = np.asarray(data[4:]).astype(float)
@@ -303,6 +309,14 @@ for chrom_num in range(1,23):
 				print('assumption erororo')
 				pdb.set_trace()
 
+			if gene_strand == '+':
+				dist_to_tss = dist_to_tss*1.0
+			elif gene_strand == '-':
+				dist_to_tss = dist_to_tss*-1.0
+			else:
+				print('asssumption erroror')
+				pdb.set_trace()
+
 			# Extract variant af
 			var_af = np.mean(geno_mat[var_index,:])/2.0
 
@@ -340,4 +354,3 @@ for chrom_num in range(1,23):
 
 
 t.close()
-
