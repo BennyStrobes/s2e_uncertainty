@@ -24,6 +24,9 @@ gtex_v10_expression_dir="/lab-share/CHIP-Strober-e2/Public/GTEx/expression/per_t
 # GTEx v10 covariate dir
 gtex_v10_covariate_dir="/lab-share/CHIP-Strober-e2/Public/GTEx/expression/per_tissue_covariates/"
 
+# Gtex subject attributes (has ancestry)
+gtex_subject_attributes_file="/lab-share/CHIP-Strober-e2/Public/GTEx/genotype_dbgap_download/phs000424.v11.pht002742.v9.p2.c1.GTEx_Subject_Phenotypes.GRU.txt.gz"
+
 
 #################
 # Output data
@@ -44,11 +47,6 @@ eQTL_results_dir=${output_root_dir}"eqtl_results/"
 # Run code
 #################
 
-if false; then
-tail -n +2 "$borzoi_gtex_independent_target_names_file" | while IFS=$'\t' read -r orig_target_index borzoi_target_index target_identifier target_description gtex_tissue; do
-echo "hi"
-done
-fi
 
 
 ############################
@@ -70,9 +68,10 @@ tail -n +2 "$borzoi_gtex_independent_target_names_file" | while IFS=$'\t' read -
 	input_covariate_file=${gtex_v10_covariate_dir}${gtex_tissue}".v10.covariates.txt"
 
 	residual_expression_file=${residualized_expression_dir}${gtex_tissue}".v10.residualized_expression_renormalized.bed"
-	sh residualize_expression.sh $input_expression_file $input_covariate_file $residual_expression_file $gtex_v10_pc_genes_gtf
+	sbatch residualize_expression.sh $input_expression_file $input_covariate_file $residual_expression_file $gtex_v10_pc_genes_gtf $gtex_subject_attributes_file
 done
 fi
+
 
 
 ############################
@@ -89,6 +88,7 @@ fi
 
 
 
+
 ############################
 # 3. Run Simple eQTL analsysis
 ############################
@@ -102,6 +102,7 @@ tail -n +2 "$borzoi_gtex_independent_target_names_file" | while IFS=$'\t' read -
 	sbatch simple_eqtl_analysis.sh $residual_expression_file $genotype_mapping_file $plink_genotype_data_dir"gtex_v9_eqtl_chr" $eqtl_sumstats_dir${gtex_tissue}".v10.allpairs.chr" $eqtl_results_output_file $gtex_v10_pc_genes_gtf
 done
 fi
+
 
 
 
