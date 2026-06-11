@@ -15,7 +15,7 @@ ashr_like_samp_var_dir="${8}"
 
 echo "Simulation "${simulation_iter}
 source ~/.bashrc
-conda activate plink_env
+conda activate susie
 
 date
 ####################################################
@@ -51,8 +51,9 @@ echo "PART 3"
 eqtl_sample_size="489"
 est_eqtl_effect_size_file=${est_eqtl_effect_size_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_est_eqtl_effects.txt.gz"
 ind_expr_file=${est_eqtl_effect_size_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_individual_expression.txt.gz"
+susie_fine_mapping_file=${est_eqtl_effect_size_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_susie_fine_mapping.txt.gz"
 if false; then
-python simulate_eqtl_analysis.py $causal_variant_gene_effect_size_file $est_eqtl_effect_size_file $gene_ld_summary_file $onek_genomes_plink_filestem $eqtl_sample_size $simulation_iter $ind_expr_file
+python simulate_eqtl_analysis.py $causal_variant_gene_effect_size_file $est_eqtl_effect_size_file $gene_ld_summary_file $onek_genomes_plink_filestem $eqtl_sample_size $simulation_iter $ind_expr_file $susie_fine_mapping_file
 fi
 
 ####################################################
@@ -107,5 +108,4 @@ sampling_variance="0.002"
 	python visualize_sampling_cdf.py $causal_ashr_individual_level_results_file $sim_borzoi_error_file $output_stem
 
 date
-
 

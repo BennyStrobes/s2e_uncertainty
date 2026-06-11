@@ -4,6 +4,8 @@ import sys
 import pdb
 from pandas_plink import read_plink
 import gzip
+import subprocess
+import tempfile
 
 
 
@@ -40,7 +42,12 @@ def standardize_geno(geno_mat):
 	n_snps = std_geno_mat.shape[0]
 
 	for snp_iter in range(n_snps):
-		std_geno_mat[snp_iter,:] = (std_geno_mat[snp_iter,:] - np.mean(std_geno_mat[snp_iter,:]))/np.std(std_geno_mat[snp_iter,:], ddof=1)
+		snp_mean = np.mean(std_geno_mat[snp_iter,:])
+		snp_std = np.std(std_geno_mat[snp_iter,:], ddof=1)
+		if snp_std == 0.0 or np.isfinite(snp_std) == False:
+			std_geno_mat[snp_iter,:] = 0.0
+		else:
+			std_geno_mat[snp_iter,:] = (std_geno_mat[snp_iter,:] - snp_mean)/snp_std
 
 	return std_geno_mat
 
@@ -135,6 +142,48 @@ def marginal_snp_effects_and_se(gene_expression, geno_mat):
 	return betas, ses
 
 
+def run_susie_fine_mapping(gene_expression, std_geno_mat, cis_variant_names, gene_name, susie_r_script, susie_num_effects=10):
+	"""
+	Run SuSiE fine-mapping with individual-level expression and standardized genotypes.
+
+	std_geno_mat has shape (n_snps, n_samples). susieR expects X with shape
+	(n_samples, n_snps), so the matrix is transposed before writing.
+	"""
+	valid_snps = np.all(np.isfinite(std_geno_mat), axis=1)
+	if np.sum(valid_snps) == 0:
+		return ''
+
+	with tempfile.TemporaryDirectory() as tmp_dir:
+		x_file = os.path.join(tmp_dir, 'susie_X.txt')
+		y_file = os.path.join(tmp_dir, 'susie_y.txt')
+		variant_file = os.path.join(tmp_dir, 'susie_variants.txt')
+		output_file = os.path.join(tmp_dir, 'susie_results.txt')
+
+		np.savetxt(x_file, np.transpose(std_geno_mat[valid_snps, :]), delimiter='\t')
+		np.savetxt(y_file, gene_expression, delimiter='\t')
+		np.savetxt(variant_file, cis_variant_names[valid_snps], fmt='%s', delimiter='\t')
+
+		cmd = [
+			'Rscript',
+			susie_r_script,
+			x_file,
+			y_file,
+			variant_file,
+			gene_name,
+			output_file,
+			str(susie_num_effects)
+		]
+		try:
+			subprocess.run(cmd, check=True, capture_output=True, text=True)
+		except subprocess.CalledProcessError as error:
+			print('SuSiE fine-mapping failed for ' + gene_name)
+			print(error.stderr)
+			raise
+
+		with open(output_file) as f:
+			return f.read()
+
+
 def create_mapping_from_variant_id_to_alleles(snp_array, a0_arr, a1_arr, chrom_arr, pos_arr):
 	if len(snp_array) != len(a0_arr):
 		print('assumption eorroro')
@@ -162,6 +211,8 @@ onek_genomes_plink_filestem = sys.argv[4]
 eqtl_sample_size = int(sys.argv[5])
 simulation_iter = int(sys.argv[6])
 individual_expression_file = sys.argv[7]
+susie_fine_mapping_file = sys.argv[8] if len(sys.argv) > 8 else None
+susie_r_script = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'run_susie_fine_mapping.R')
 
 
 
@@ -173,7 +224,7 @@ gene_id_to_causal_effects = create_mapping_from_gene_id_to_causal_effects(causal
 
 
 # Get sample indices
-sample_indices = np.arange(489)
+sample_indices = np.arange(eqtl_sample_size)
 
 
 # Open output file handle
@@ -184,6 +235,13 @@ t.write('gene\tvariant\tchr\tsnp_pos\tA0\tA1\teqtl_effect_size\teqtl_effect_size
 t_indi = gzip.open(individual_expression_file, 'wt')
 t_indi.write('gene\tindividual\texpression\n')
 
+# Open SuSiE fine-mapping output file handle
+if susie_fine_mapping_file is not None:
+	t_susie = gzip.open(susie_fine_mapping_file, 'wt')
+	t_susie.write('gene\tvariant\tsusie_pip\tsusie_posterior_mean\tsusie_posterior_sd\tsusie_credible_sets\tsusie_cs_min_abs_corr\n')
+else:
+	t_susie = None
+
 # Loop through chromosomes
 for chrom_num in range(1,23):
 	print(chrom_num)
@@ -192,6 +250,8 @@ for chrom_num in range(1,23):
 
 	# Load in chromosome plink data
 	(bim, fam, G) = read_plink(onek_genomes_plink_filestem + str(chrom_num))
+	if eqtl_sample_size > G.shape[1]:
+		raise ValueError('Requested eqtl_sample_size=' + str(eqtl_sample_size) + ' but only ' + str(G.shape[1]) + ' genotype samples are available.')
 
 	# Create mapping from variant id to index
 	rsid_to_genotype_index = create_mapping_from_variant_id_to_genotype_index(np.asarray(bim['snp']))
@@ -215,6 +275,8 @@ for chrom_num in range(1,23):
 			continue
 		gene_name = data[0]
 		counter = counter + 1
+		if gene_name not in gene_id_to_causal_effects:
+			continue
 		gene_cis_variant_file = data[4]
 		n_cis_variants = int(data[3])
 		if n_cis_variants < 11:
@@ -279,6 +341,13 @@ for chrom_num in range(1,23):
 		# Run eqtl mapping
 		eqtl_beta, eqtl_beta_se = marginal_snp_effects_and_se(gene_expression, geno_mat)
 
+		# Run SuSiE fine-mapping
+		if t_susie is not None:
+			susie_results = run_susie_fine_mapping(gene_expression, std_geno_mat, cis_variant_names, gene_name, susie_r_script)
+			t_susie.write(susie_results)
+			t_susie.flush()
+
+
 		# Print to output file
 		for var_iter, variant_id in enumerate(cis_variant_names):
 			t.write(gene_name + '\t' + variant_id + '\t' + str(cis_variant_chroms[var_iter]) + '\t' + str(cis_variant_poss[var_iter]) + '\t' + cis_variant_a0s[var_iter] + '\t' + cis_variant_a1s[var_iter] + '\t' + str(eqtl_beta[var_iter]) + '\t' + str(eqtl_beta_se[var_iter]) + '\t' + str(n_samp) + '\n')
@@ -291,4 +360,8 @@ for chrom_num in range(1,23):
 	f.close()
 t.close()
 t_indi.close()
+if t_susie is not None:
+	t_susie.close()
 print(est_eqtl_effect_size_file)
+if susie_fine_mapping_file is not None:
+	print(susie_fine_mapping_file)

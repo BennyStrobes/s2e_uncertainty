@@ -329,6 +329,10 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_e
 				print('assumption erororo')
 				pdb.set_trace()
 
+			NNN = geno_mat.shape[1]
+			sq_LD = LD**2
+			adj_sq_ld = sq_LD - (1.0 - sq_LD)/(NNN - 2.0)
+
 			gene_to_ld_means[gene_id] = {}
 			gene_to_ld_means[gene_id]['eQTL_effect_sizes'] = eqtl_effects
 			gene_to_ld_means[gene_id]['eQTL_effect_ses'] = eqtl_effect_ses
@@ -336,7 +340,7 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_e
 			gene_to_ld_means[gene_id]['borzoi_effects_unstandardized'] = borzoi_effects_unstandardized
 			gene_to_ld_means[gene_id]['variant_anno'] = variant_anno
 			gene_to_ld_means[gene_id]['ld_means'] = LD @ (variant_anno * borzoi_effects[:, None])
-			gene_to_ld_means[gene_id]['ld_scores'] = (LD**2) @ variant_anno
+			gene_to_ld_means[gene_id]['ld_scores'] = (adj_sq_ld) @ variant_anno
 
 
 	return gene_to_ld_means

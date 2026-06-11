@@ -8,6 +8,7 @@ borzoi_results_dir="/lab-share/CHIP-Strober-e2/Public/ben/borzoi_genome_wide_run
 # Directory containing borzoi gtex target indices and names
 borzoi_gtex_target_names_file=${borzoi_results_dir}"targets_gtex_only_ordered.txt"
 borzoi_gtex_independent_target_names_file=${borzoi_results_dir}"targets_gtex_only_independent_ordered.txt"
+borzoi_gtex_independent_target_names_file=${borzoi_results_dir}"targets_gtex_only_unique_ordered.txt"
 
 # Directory containing genotype data
 plink2_genotype_data_dir="/lab-share/CHIP-Strober-e2/Public/ben/process_gtex_genotype_data/processed_genotype/"
@@ -89,6 +90,7 @@ fi
 
 
 
+
 ############################
 # 3. Run Simple eQTL analsysis
 ############################
@@ -98,11 +100,9 @@ tail -n +2 "$borzoi_gtex_independent_target_names_file" | while IFS=$'\t' read -
 	genotype_mapping_file=$plink_genotype_data_dir"genotype_sample_mapping_to_"${gtex_tissue}"_expression_samples.txt"
 
 	eqtl_results_output_file=$eQTL_results_dir"eqtl_results_"${gtex_tissue}"_sumstats.txt.gz"
-
 	sbatch simple_eqtl_analysis.sh $residual_expression_file $genotype_mapping_file $plink_genotype_data_dir"gtex_v9_eqtl_chr" $eqtl_sumstats_dir${gtex_tissue}".v10.allpairs.chr" $eqtl_results_output_file $gtex_v10_pc_genes_gtf
 done
 fi
-
 
 
 

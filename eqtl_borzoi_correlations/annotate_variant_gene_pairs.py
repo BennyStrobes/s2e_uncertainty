@@ -2,12 +2,36 @@ import numpy as np
 import sys
 import pdb
 import gzip
-import pyarrow.parquet as pq
 
 
 def write_annotation_header(data, t, anno_names):
 	t.write(data[0] + '\t' + data[1] + '\t' + data[2] + '\t' + data[3] + '\t' + data[4] + '\t' + data[5])
 	t.write('\t' + '\t'.join(anno_names) + '\n')
+
+
+def create_intercept_annotation(borzoi_effect_file, borzoi_annotation_file):
+	f = gzip.open(borzoi_effect_file,'rt')
+	t = gzip.open(borzoi_annotation_file, 'wt')
+	bin_count = 0
+
+	head_count = 0
+	for line in f:
+		line = line.rstrip()
+		data = line.split('\t')
+		if head_count == 0:
+			head_count = head_count + 1
+			write_annotation_header(data, t, ['intercept'])
+			continue
+
+		t.write(data[0] + '\t' + data[1] + '\t' + data[2] + '\t' + data[3] + '\t' + data[4] + '\t' + data[5])
+		t.write('\t1.0\n')
+		bin_count = bin_count + 1
+
+	f.close()
+	t.close()
+
+	print('intercept: ' + str(bin_count))
+	return
 
 
 def create_one_hot_annotation_from_vg_pair_mapping(borzoi_effect_file, borzoi_annotation_file, vg_pair_info, vg_pair_info_index, bins, bin_prefix):
@@ -51,6 +75,53 @@ def create_one_hot_annotation_from_vg_pair_mapping(borzoi_effect_file, borzoi_an
 	return
 
 
+def create_annotation_using_baselineLD_anno(borzoi_effect_file, borzoi_annotation_file, variant_to_anno):
+	n_anno = 2
+	f = gzip.open(borzoi_effect_file,'rt')
+	t = gzip.open(borzoi_annotation_file, 'wt')
+	bin_counts = np.zeros(n_anno, dtype=int)
+
+	head_count = 0
+	for line in f:
+		line = line.rstrip()
+		data = line.split('\t')
+		if head_count == 0:
+			head_count = head_count + 1
+			t.write(data[0] + '\t' + data[1] + '\t' + data[2] + '\t' + data[3] + '\t' + data[4] + '\t' + data[5])
+			for bin_iter in range(n_anno):
+				t.write('\tannotation_bin' + str(bin_iter))
+			t.write('\n')
+			continue
+
+		borzoi_effect_size = np.abs(float(data[6]))
+		bin_membership = np.zeros(n_anno)
+
+		tmp_var_name = data[2] + ':' + data[3]
+
+		if tmp_var_name not in variant_to_anno:
+			bin_membership[0] = 1
+			bin_counts[0] = bin_counts[0] + 1
+		else:
+			anno = variant_to_anno[tmp_var_name]
+			if anno == '0':
+				bin_membership[0] = 1
+				bin_counts[0] = bin_counts[0] + 1
+			else:
+				bin_membership[1] = 1
+				bin_counts[1] = bin_counts[1] + 1
+
+
+		t.write(data[0] + '\t' + data[1] + '\t' + data[2] + '\t' + data[3] + '\t' + data[4] + '\t' + data[5])
+		t.write('\t' + '\t'.join(bin_membership.astype(str)) + '\n')
+
+	f.close()
+	t.close()
+
+	for bin_iter in range(n_anno):
+		print('anno_bin' + str(bin_iter) + ': ' + str(bin_counts[bin_iter]))
+	return	
+
+
 def create_annotation_using_borzoi_magnitude_bins(borzoi_effect_file, borzoi_annotation_file, bins=[0.0, 0.01, 0.075, 0.2, 10.0]):
 	f = gzip.open(borzoi_effect_file,'rt')
 	t = gzip.open(borzoi_annotation_file, 'wt')
@@ -89,6 +160,47 @@ def create_annotation_using_borzoi_magnitude_bins(borzoi_effect_file, borzoi_ann
 	for bin_iter in range(len(bins)-1):
 		print('magnitude_bin' + str(bin_iter) + ' [' + str(bins[bin_iter]) + ', ' + str(bins[bin_iter+1]) + '): ' + str(bin_counts[bin_iter]))
 	return
+
+
+def create_annotation_using_borzoi_effect_size_bins(borzoi_effect_file, borzoi_annotation_file, bins=[-10.0, -0.2, -0.075, -0.01, -0.001, 0.0, 0.001, 0.01, 0.075, 0.2, 10.0]):
+	f = gzip.open(borzoi_effect_file,'rt')
+	t = gzip.open(borzoi_annotation_file, 'wt')
+	bin_counts = np.zeros(len(bins)-1, dtype=int)
+
+	head_count = 0
+	for line in f:
+		line = line.rstrip()
+		data = line.split('\t')
+		if head_count == 0:
+			head_count = head_count + 1
+			t.write(data[0] + '\t' + data[1] + '\t' + data[2] + '\t' + data[3] + '\t' + data[4] + '\t' + data[5])
+			for bin_iter in range(len(bins)-1):
+				t.write('\teffect_size_bin' + str(bin_iter))
+			t.write('\n')
+			continue
+
+		borzoi_effect_size = float(data[6])
+		bin_membership = np.zeros(len(bins)-1)
+		for bin_iter in range(len(bins)-1):
+			if borzoi_effect_size >= bins[bin_iter] and borzoi_effect_size < bins[bin_iter+1]:
+				bin_membership[bin_iter] = 1.0
+				bin_counts[bin_iter] = bin_counts[bin_iter] + 1
+				break
+
+		if np.sum(bin_membership) != 1.0:
+			print('assumption eroror')
+			pdb.set_trace()
+
+		t.write(data[0] + '\t' + data[1] + '\t' + data[2] + '\t' + data[3] + '\t' + data[4] + '\t' + data[5])
+		t.write('\t' + '\t'.join(bin_membership.astype(str)) + '\n')
+
+	f.close()
+	t.close()
+
+	for bin_iter in range(len(bins)-1):
+		print('effect_size_bin' + str(bin_iter) + ' [' + str(bins[bin_iter]) + ', ' + str(bins[bin_iter+1]) + '): ' + str(bin_counts[bin_iter]))
+	return
+
 
 
 def create_annotation_using_borzoi_magnitude_bins_x_maf_bins(borzoi_effect_file, borzoi_annotation_file, vg_pair_info, magnitude_bins=[0.0, 0.01, 0.075, 0.2, 10.0], maf_bins=[0.0, 0.05, 0.1, 0.2, 0.3, 0.500001]):
@@ -239,6 +351,32 @@ def extract_info_on_each_variant_gene_pair(eqtl_sumstats_file):
 	f.close()
 	return dicti
 
+def create_mapping_from_variant_to_anno(baselineLD_anno_dir, anno_sub_name):
+	mapping = {}
+	for chrom_num in range(1,23):
+		anno_file = baselineLD_anno_dir + 'baselineLD.' + str(chrom_num) + '.annot.gz'
+		f = gzip.open(anno_file,'rt')
+		head_count = 0
+		for line in f:
+			line = line.rstrip()
+			data = line.split('\t')
+			if head_count == 0:
+				head_count = head_count + 1
+				tmp = np.where(np.asarray(data)== anno_sub_name)[0]
+				if len(tmp) != 1:
+					print('assumption oeoror')
+					pdb.set_trace()
+				anno_index = tmp[0]
+				continue
+			var_id = data[0] + ':' + data[1]
+			anno_value = data[anno_index]
+			if anno_value != '0' and anno_value != '1':
+				print('assumptioneroorr: assume binary anno')
+				pdb.set_trace()
+			mapping[var_id] = anno_value
+		f.close()
+	return mapping
+
 
 #####################
 # Command line args
@@ -248,15 +386,25 @@ anno_method = sys.argv[2]
 borzoi_annotation_file = sys.argv[3]
 eqtl_sumstats_file = sys.argv[4]
 tissue_name = sys.argv[5]
+baselineLD_anno_dir = sys.argv[6]
 
 # Create mapping from variant-gene pairs to auxiliary info
-vg_pair_info = extract_info_on_each_variant_gene_pair(eqtl_sumstats_file)
+if anno_method == 'intercept' or anno_method.startswith('baselineLD'):
+	vg_pair_info = None
+else:
+	vg_pair_info = extract_info_on_each_variant_gene_pair(eqtl_sumstats_file)
 
 
-if anno_method == 'borzoi_magnitude_bins':
+if anno_method == 'intercept':
+	create_intercept_annotation(borzoi_effect_file, borzoi_annotation_file)
+elif anno_method == 'borzoi_magnitude_bins':
 	create_annotation_using_borzoi_magnitude_bins(borzoi_effect_file, borzoi_annotation_file, bins=[0.0, 0.001, 0.01, 0.075, 0.2, 10.0])
+elif anno_method == 'borzoi_effect_size_bins':
+	create_annotation_using_borzoi_effect_size_bins(borzoi_effect_file, borzoi_annotation_file, bins=[-10.0, -0.2, -0.075, -0.01, -0.001, 0.0, 0.001, 0.01, 0.075, 0.2, 10.0])
+elif anno_method == 'borzoi_finer_effect_size_bins':
+	create_annotation_using_borzoi_effect_size_bins(borzoi_effect_file, borzoi_annotation_file, bins=[-10.0, -0.25, -.1, -0.04, -0.01, -0.001, 0.0, 0.001, 0.01, 0.04,.1, 0.25, 10.0])
 elif anno_method == 'dist_to_tss_bins':
-	create_annotation_using_distance_to_tss_bins(borzoi_effect_file, borzoi_annotation_file, vg_pair_info, bins=[0.0, 5000.0, 50000.0, 100001.0])
+	create_annotation_using_distance_to_tss_bins(borzoi_effect_file, borzoi_annotation_file, vg_pair_info, bins=[0.0, 1000.0, 5000.0, 25000.0, 50000.0, 100001.0])
 elif anno_method == 'strand_dist_to_tss_bins':
 	create_annotation_using_distance_to_strand_based_tss_bins(borzoi_effect_file, borzoi_annotation_file, vg_pair_info,bins=[-100001.0, -50000.0, -5000.0, 0.0, 5000.0, 50000.0, 100001.0])
 elif anno_method == 'af_bins':
@@ -265,3 +413,11 @@ elif anno_method == 'borzoi_magnitude_binsXaf_bins':
 	create_annotation_using_borzoi_magnitude_bins_x_maf_bins(borzoi_effect_file, borzoi_annotation_file, vg_pair_info, magnitude_bins=[0.0, 0.001, 0.01, 0.075, 0.2, 10.0], maf_bins=[0.0, 0.05, 0.1, 0.2, 0.3, 0.500001])
 elif anno_method == 'borzoi_magnitude_binsXdist_to_tss_bins':
 	create_annotation_using_borzoi_magnitude_bins_x_dist_to_tss_bins(borzoi_effect_file, borzoi_annotation_file, vg_pair_info, magnitude_bins=[0.0, 0.001, 0.01, 0.075, 0.2, 10.0], dist_bins=[0.0, 5000.0, 50000.0, 100001.0])
+elif anno_method.startswith('baselineLD'):
+	anno_sub_name = anno_method.split('baselineLD_')[1]
+	variant_to_anno = create_mapping_from_variant_to_anno(baselineLD_anno_dir, anno_sub_name)
+	create_annotation_using_baselineLD_anno(borzoi_effect_file, borzoi_annotation_file, variant_to_anno)
+
+
+
+

@@ -57,6 +57,16 @@ correlation_inference_results_dir=${output_root}"corr_sim_inference_results/"
 
 correlation_visualization_dir=${output_root}"corr_visualization/"
 
+# XC
+xc_correlation_causal_effect_dir=${output_root}"xc_corr_sim_causal_eqtl_effects/"
+
+xc_correlation_borzoi_est_effect_dir=${output_root}"xc_corr_sim_borzoi_eqtl_effects/"
+
+xc_correlation_est_eqtl_effects_dir=${output_root}"xc_corr_sim_est_eqtl_effect_size_dir/"
+
+xc_correlation_inference_results_dir=${output_root}"xc_corr_sim_inference_results/"
+
+
 
 ######################
 # Run analysis
@@ -91,6 +101,26 @@ do
 done
 fi
 
+
+######################
+# Run simulations based to get cross-context correlations
+######################
+rho_delta_arr=("0.0" "0.1" "0.2" "0.4")
+if false; then
+for simulation_iter in {1..20}
+do
+	for rho_delta in "${rho_delta_arr[@]}"
+	do
+		sbatch run_cross_context_correlation_simulation.sh $simulation_iter $gene_ld_summary_file $xc_correlation_causal_effect_dir $xc_correlation_est_eqtl_effects_dir $xc_correlation_borzoi_est_effect_dir $onek_genomes_plink_filestem $xc_correlation_inference_results_dir $rho_delta
+	done
+done
+fi
+
+
+
+
+
+
 if false; then
 source ~/.bashrc
 conda activate plink_env
@@ -118,6 +148,5 @@ source ~/.bashrc
 conda activate plink_env
 Rscript visualize_simulation_results.R $ldsc_like_samp_var_dir $visualization_dir
 fi
-
 
 
