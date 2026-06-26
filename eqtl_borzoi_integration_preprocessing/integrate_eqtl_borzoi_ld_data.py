@@ -568,41 +568,40 @@ gtex_v10_pc_genes_gtf = sys.argv[8]
 pc_genes = extract_dictionary_list_of_protein_coding_genes(gtex_v10_pc_genes_gtf, chrom_num)
 
 # Extract ordered list of tissues
-#ordered_gtex_tissues = extract_ordered_gtex_tissues(eqtl_sumstats_dir, chrom_num)
+ordered_gtex_tissues = extract_ordered_gtex_tissues(eqtl_sumstats_dir, chrom_num)
 
 ##############
 gtex_tissue_names_file=borzoi_output_dir + 'ordered_gtex_tissues_chr' + str(chrom_num) + '.txt'
 # Print to output
-'''
 t = open(gtex_tissue_names_file, 'w')
 t.write('tissue_name\n')
 for tissue_name in ordered_gtex_tissues:
 	t.write(tissue_name + '\n')
 t.close()
-'''
+
 
 # Load in eqtl sumstats object
-#eqtl_ss_obj = load_in_eqtl_sumstats(eqtl_sumstats_dir, chrom_num, ordered_gtex_tissues, pc_genes)
+eqtl_ss_obj = load_in_eqtl_sumstats(eqtl_sumstats_dir, chrom_num, ordered_gtex_tissues, pc_genes)
 
 
 # Print eQTL sumstat object to output
 gene_eqtl_summary_file = eqtl_ss_output_dir + 'gene_summary_chr' + str(chrom_num) + '.txt'
-#print_eqtl_summary(gene_eqtl_summary_file, eqtl_ss_obj, eqtl_ss_output_dir, chrom_num)
+print_eqtl_summary(gene_eqtl_summary_file, eqtl_ss_obj, eqtl_ss_output_dir, chrom_num)
 
 # Generate LD summary file
 ld_summary_file = os.path.join(LD_output_dir, 'gene_ld_summary_chr' + str(chrom_num) + '.txt')
-#generate_gene_ld_summary(gene_eqtl_summary_file, plink2_genotype_data_dir, LD_output_dir, chrom_num)
+generate_gene_ld_summary(gene_eqtl_summary_file, plink2_genotype_data_dir, LD_output_dir, chrom_num)
 
 
 # Finally generate borzoi summary file
-#generate_borzoi_summary_file(ld_summary_file, chrom_num, borzoi_results_dir, borzoi_output_dir)
+generate_borzoi_summary_file(ld_summary_file, chrom_num, borzoi_results_dir, borzoi_output_dir)
 borzoi_summary_file = os.path.join(borzoi_output_dir, 'gene_borzoi_summary_chr' + str(chrom_num) + '.txt')
 
 
 
 # Get inverse LD Ready
 inverse_ld_extension_summary_file = os.path.join(borzoi_output_dir, 'gene_borzoi_summary_inv_ld_ready_chr' + str(chrom_num) + '.txt')
-#generate_summary_file_ready_for_inv_ld(borzoi_summary_file, inverse_ld_extension_summary_file, LD_output_dir, eqtl_ss_output_dir)
+generate_summary_file_ready_for_inv_ld(borzoi_summary_file, inverse_ld_extension_summary_file, LD_output_dir, eqtl_ss_output_dir)
 
 
 
