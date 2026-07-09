@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -t 0-5:00                         # Runtime in D-HH:MM format
+#SBATCH -t 0-2:00                         # Runtime in D-HH:MM format
 #SBATCH -p bch-compute                        # Partition to run in
 #SBATCH --mem=30GB 
 
@@ -32,7 +32,7 @@ python run_ld_corr.py \
 	--ld-corr-output-stem $ld_corr_output_stem"_weighted" \
     --weighted "True"
 
-
+if false; then
 python run_ld_corr.py \
 	--est-borzoi-effect-size-file $borzoi_effect_file \
 	--est-eqtl-effect-size-file $eqtl_effects_file \
@@ -41,7 +41,7 @@ python run_ld_corr.py \
 	--genotype-sample-mapping-file $genotype_sample_mapping_file \
 	--ld-corr-output-stem $ld_corr_output_stem"_unweighted" \
     --weighted "False"
-
+fi
 
 
 

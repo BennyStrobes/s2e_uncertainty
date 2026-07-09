@@ -181,11 +181,15 @@ genotype_stem=$processed_genotype_data_dir"gtex_v9_eqtl_chr"
 genotype_sample_mapping_file=$processed_genotype_data_dir"genotype_sample_mapping_to_"${target_tissue}"_expression_samples.txt"
 
 anno_method="borzoi_magnitude_bins"
+
+anno_methods=("intercept" "borzoi_magnitude_bins" "dist_to_tss_bins" "strand_dist_to_tss_bins" "af_bins" "borzoi_magnitude_binsXaf_bins" "borzoi_magnitude_binsXdist_to_tss_bins" "baselineLD_Conserved_Mammal_phastCons46way" "baselineLD_TSS_Hoffman" "baselineLD_DHS_Trynka" "baselineLD_H3K27ac_Hnisz" "baselineLD_Enhancer_Hoffman")
+if false; then
+for anno_method in "${anno_methods[@]}"; do
 		borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
-		ld_corr_output_stem=${ld_corr_results_output_dir}"ld_corr_results_"${target_tissue}"_"${target_sample}"_"${anno_method}"_new"
+		ld_corr_output_stem=${ld_corr_results_output_dir}"ld_corr_results_"${target_tissue}"_"${target_sample}"_"${anno_method}"_newer"
 		sbatch run_ld_corr.sh $borzoi_effect_file $eqtl_sumstats_file $borzoi_annotation_file $genotype_stem $genotype_sample_mapping_file $ld_corr_output_stem
-
-
+done
+fi
 
 
 
