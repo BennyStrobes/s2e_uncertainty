@@ -172,7 +172,6 @@ target_sample="GTEX-13QJ3-0726-SM-5SI68.1"
 fi
 
 
-if false; then
 target_tissue="Muscle_Skeletal"
 target_sample="GTEX-13QJ3-0726-SM-5SI68.1"
 
@@ -182,12 +181,10 @@ genotype_stem=$processed_genotype_data_dir"gtex_v9_eqtl_chr"
 genotype_sample_mapping_file=$processed_genotype_data_dir"genotype_sample_mapping_to_"${target_tissue}"_expression_samples.txt"
 
 anno_method="borzoi_magnitude_bins"
-
 		borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
 		ld_corr_output_stem=${ld_corr_results_output_dir}"ld_corr_results_"${target_tissue}"_"${target_sample}"_"${anno_method}"_HE"
-		sbatch run_ld_corr.sh $borzoi_effect_file $eqtl_sumstats_file $borzoi_annotation_file $genotype_stem $genotype_sample_mapping_file $ld_corr_output_stem
+		sh run_ld_corr.sh $borzoi_effect_file $eqtl_sumstats_file $borzoi_annotation_file $genotype_stem $genotype_sample_mapping_file $ld_corr_output_stem
 
-fi
 
 
 

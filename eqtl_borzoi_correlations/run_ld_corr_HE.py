@@ -234,7 +234,7 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_e
 	gene_to_ld_means = {}
 	
 	# Loop through chromsomes
-	for chrom_num in range(21,23):
+	for chrom_num in range(1, 23):
 		print(chrom_num)
 
 		##################################
@@ -311,9 +311,16 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_e
 			geno_mat[nan_rows, nan_cols] = row_means[nan_rows]
 			LD = np.corrcoef(geno_mat)
 
+			# Regression-SNP LD scores: bias-corrected r^2 summed over the full cis set,
+			# computed on the full square LD *before* any missingness subsetting.
+			NNN = geno_mat.shape[1]
+			full_adj_sq_ld = LD**2 - (1.0 - LD**2)/(NNN - 2.0)
+			ld_scores = np.sum(full_adj_sq_ld, axis=1)
+
 			# Subset LD by missingness
 			# A. on eQTL end
 			observed_eqtl_indices = np.isnan(eqtl_effects) == False
+			eqtl_ld_scores = ld_scores[observed_eqtl_indices]
 			eqtl_effects = eqtl_effects[observed_eqtl_indices]
 			eqtl_effect_ses = eqtl_effect_ses[observed_eqtl_indices]
 			LD = LD[observed_eqtl_indices, :]
@@ -330,10 +337,6 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_e
 				print('assumption erororo')
 				pdb.set_trace()
 
-			NNN = geno_mat.shape[1]
-			sq_LD = LD**2
-			adj_sq_ld = sq_LD - (1.0 - sq_LD)/(NNN - 2.0)
-
 			# Haseman-Elston response and covariance-component design matrices.
 			upper_tri_indices = np.triu_indices(len(eqtl_effects))
 			eqtl_effect_product = np.outer(eqtl_effects, eqtl_effects)[upper_tri_indices]
@@ -343,8 +346,14 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_e
 				for anno_iter in range(variant_anno.shape[1])
 			])
 			he_response = eqtl_effect_product - sampling_covariance
-			he_xt_x = annotation_covariances @ annotation_covariances.T
-			he_xt_y = annotation_covariances @ he_response
+
+			# Regression weights: w_ij = 1/(ld_score_i * ld_score_j) over each SNP pair.
+			he_weights = (1.0/np.outer(eqtl_ld_scores, eqtl_ld_scores))[upper_tri_indices]
+
+			pdb.set_trace()
+			# Weighted normal equations (WLS): X^T W X and X^T W y.
+			he_xt_x = (annotation_covariances*he_weights[None, :]) @ annotation_covariances.T
+			he_xt_y = annotation_covariances @ (he_weights*he_response)
 
 			ld_means = LD @ (variant_anno * borzoi_effects[:, None])
 			valid_calibration_rows = np.isfinite(eqtl_effects) & np.all(np.isfinite(ld_means), axis=1)
@@ -366,25 +375,23 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_e
 
 
 def compute_calibration_coefs(gene_id_to_ld_means, ordered_gene_names):
-	yy = []
-	xx = []
+	# Accumulate the per-gene normal equations (X^T X and X^T y) across genes
+	xt_x = None
+	xt_y = None
 	annos = []
 	for gene_name in ordered_gene_names:
-		yy.append(gene_id_to_ld_means[gene_name]['eQTL_effect_sizes'])
-		xx.append(gene_id_to_ld_means[gene_name]['ld_means'])
-		annos.append(gene_id_to_ld_means[gene_name]['variant_anno'])
-	yy = np.hstack(yy)
-	xx = np.vstack(xx)
+		gene_data = gene_id_to_ld_means[gene_name]
+		if xt_x is None:
+			xt_x = np.zeros_like(gene_data['calibration_xt_x'])
+			xt_y = np.zeros_like(gene_data['calibration_xt_y'])
+		xt_x = xt_x + gene_data['calibration_xt_x']
+		xt_y = xt_y + gene_data['calibration_xt_y']
+		annos.append(gene_data['variant_anno'])
 	annos = np.vstack(annos)
 
-	valid_rows = np.isfinite(yy) & np.all(np.isfinite(xx), axis=1)
-	yy = yy[valid_rows]
-	xx = xx[valid_rows, :]
-	#annos = annos[valid_rows, :]
 
+	calibration_coefs, _, _, _ = np.linalg.lstsq(xt_x, xt_y, rcond=None)
 
-	calibration_coefs, _, _, _ = np.linalg.lstsq(xx, yy, rcond=None)
-	
 	pred_coefs = np.dot(annos, calibration_coefs)
 	avg_pred_coefs = []
 	for anno_iter in range(annos.shape[1]):
@@ -446,26 +453,22 @@ def compute_unstandardized_borzoi_variances(gene_id_to_ld_means, ordered_gene_na
 
 
 def compute_eqtl_variances(gene_id_to_ld_means, ordered_gene_names):
-	yy = []
-	xx = []
+	# Accumulate the per-gene Haseman-Elston normal equations (X^T X and X^T y) across genes
+	xt_x = None
+	xt_y = None
 	annos = []
 	for gene_name in ordered_gene_names:
-		yy.append(np.square(gene_id_to_ld_means[gene_name]['eQTL_effect_sizes']) - np.square(gene_id_to_ld_means[gene_name]['eQTL_effect_ses']))
-		xx.append(gene_id_to_ld_means[gene_name]['ld_scores'])
-		annos.append(gene_id_to_ld_means[gene_name]['variant_anno'])
-
-	yy = np.hstack(yy)
-	xx = np.vstack(xx)
+		gene_data = gene_id_to_ld_means[gene_name]
+		if xt_x is None:
+			xt_x = np.zeros_like(gene_data['he_xt_x'])
+			xt_y = np.zeros_like(gene_data['he_xt_y'])
+		xt_x = xt_x + gene_data['he_xt_x']
+		xt_y = xt_y + gene_data['he_xt_y']
+		annos.append(gene_data['variant_anno'])
 	annos = np.vstack(annos)
 
-	valid_rows = np.isfinite(yy) & np.all(np.isfinite(xx), axis=1)
-	yy = yy[valid_rows]
-	xx = xx[valid_rows, :]
-	#annos = annos[valid_rows, :]
+	taus, _, _, _ = np.linalg.lstsq(xt_x, xt_y, rcond=None)
 
-
-	taus, _, _, _ = np.linalg.lstsq(xx, yy, rcond=None)
-	
 	pred_per_snp_h2s = np.dot(annos, taus)
 	avg_pred_h2s = []
 	for anno_iter in range(annos.shape[1]):
@@ -528,12 +531,12 @@ del gene_id_to_est_eqtl_effects
 del gene_id_to_variant_gene_anno
 del gene_id_to_est_borzoi_effects
 del gene_id_to_est_borzoi_effects_unstandardized
-
+'''
 # TO DELETE
 pickle_file = ld_corr_output_stem + '.pkl'
 with open(pickle_file, 'wb') as f:
 	pickle.dump(gene_id_to_ld_means, f)
-'''
+
 
 pickle_file = ld_corr_output_stem + '.pkl'
 with open(pickle_file, 'rb') as f:

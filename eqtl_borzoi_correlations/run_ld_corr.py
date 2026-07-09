@@ -486,7 +486,6 @@ ld_corr_output_stem = sys.argv[6]
 ##############################
 # Load in data
 ##############################
-
 # Create mapping from gene id to vector of est (standardized) eqtl effect sizes
 gene_id_to_est_eqtl_effects, variant_id_to_genotype_sdev = create_mapping_from_gene_id_to_est_eqtl_effect_sizes(est_eqtl_effect_size_file)
 

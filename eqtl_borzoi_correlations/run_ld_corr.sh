@@ -23,8 +23,9 @@ conda activate plink_env
 
 
 
-if false; then
 python run_ld_corr.py $borzoi_effect_file $eqtl_effects_file $borzoi_annotation_file $genotype_stem $genotype_sample_mapping_file $ld_corr_output_stem
-fi
 
+
+if false; then
 python run_ld_corr_HE.py $borzoi_effect_file $eqtl_effects_file $borzoi_annotation_file $genotype_stem $genotype_sample_mapping_file $ld_corr_output_stem
+fi
