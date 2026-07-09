@@ -29,9 +29,18 @@ python run_ld_corr.py \
 	--sim-variant-gene-annotation-file $borzoi_annotation_file \
 	--genotype-plink-filestem $genotype_stem \
 	--genotype-sample-mapping-file $genotype_sample_mapping_file \
-	--ld-corr-output-stem $ld_corr_output_stem
+	--ld-corr-output-stem $ld_corr_output_stem"_weighted" \
+    --weighted "True"
 
 
+python run_ld_corr.py \
+	--est-borzoi-effect-size-file $borzoi_effect_file \
+	--est-eqtl-effect-size-file $eqtl_effects_file \
+	--sim-variant-gene-annotation-file $borzoi_annotation_file \
+	--genotype-plink-filestem $genotype_stem \
+	--genotype-sample-mapping-file $genotype_sample_mapping_file \
+	--ld-corr-output-stem $ld_corr_output_stem"_unweighted" \
+    --weighted "False"
 
 
 

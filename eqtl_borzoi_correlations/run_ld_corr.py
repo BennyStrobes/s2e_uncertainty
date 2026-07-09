@@ -9,6 +9,17 @@ from pandas_plink import read_plink
 import time
 
 
+def str2bool(v):
+	if isinstance(v, bool):
+		return v
+	if v.lower() in ('yes', 'true', 't', 'y', '1'):
+		return True
+	elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+		return False
+	else:
+		raise argparse.ArgumentTypeError('Boolean value expected.')
+
+
 
 
 
@@ -230,7 +241,7 @@ def extract_gene_chrom_num(var_id_to_est_borzoi_effects):
 	chrom_num = var_id_to_est_borzoi_effects[var_id][2]
 	return chrom_num
 
-def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_effects_unstandardized, gene_id_to_est_eqtl_effects, gene_id_to_variant_gene_anno, genotype_plink_filestem, anno_names, genotype_sample_indices):
+def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_effects_unstandardized, gene_id_to_est_eqtl_effects, gene_id_to_variant_gene_anno, genotype_plink_filestem, anno_names, genotype_sample_indices, weighted):
 	# Initialize output object
 	gene_to_ld_means = {}
 	
@@ -349,14 +360,25 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_e
 			gene_to_ld_means[gene_id]['calibration_xt_x'] = calibration_x.T @ calibration_x
 			gene_to_ld_means[gene_id]['calibration_xt_y'] = calibration_x.T @ calibration_y
 
+
+
 			# Variance (per-SNP eQTL h2) regression: X = ld_scores, y = eQTL effect^2 - se^2.
 			ld_scores = adj_sq_ld @ variant_anno
 			eqtl_var_y = np.square(eqtl_effects) - np.square(eqtl_effect_ses)
 			eqtl_var_valid = np.isfinite(eqtl_var_y) & np.all(np.isfinite(ld_scores), axis=1)
 			eqtl_var_x = ld_scores[eqtl_var_valid, :]
 			eqtl_var_y = eqtl_var_y[eqtl_var_valid]
-			gene_to_ld_means[gene_id]['eqtl_var_xt_x'] = eqtl_var_x.T @ eqtl_var_x
-			gene_to_ld_means[gene_id]['eqtl_var_xt_y'] = eqtl_var_x.T @ eqtl_var_y
+
+			if weighted:
+				# LDSC redundancy weights: w_i = 1 / (intercept LD score), clamped at 1.
+				intercept_LD_scores = np.sum(adj_sq_ld, axis=1)
+				intercept_LD_scores[intercept_LD_scores < 1.0] = 1
+				weights = (1.0/intercept_LD_scores)[eqtl_var_valid]
+				gene_to_ld_means[gene_id]['eqtl_var_xt_x'] = (eqtl_var_x * weights[:, None]).T @ eqtl_var_x
+				gene_to_ld_means[gene_id]['eqtl_var_xt_y'] = (eqtl_var_x * weights[:, None]).T @ eqtl_var_y
+			else:
+				gene_to_ld_means[gene_id]['eqtl_var_xt_x'] = eqtl_var_x.T @ eqtl_var_x
+				gene_to_ld_means[gene_id]['eqtl_var_xt_y'] = eqtl_var_x.T @ eqtl_var_y
 
 
 	return gene_to_ld_means
@@ -490,6 +512,7 @@ parser.add_argument('--sim-variant-gene-annotation-file', dest='sim_variant_gene
 parser.add_argument('--genotype-plink-filestem', dest='genotype_plink_filestem', required=True, help='Genotype plink filestem (per-chromosome number appended).')
 parser.add_argument('--genotype-sample-mapping-file', dest='genotype_sample_mapping_file', required=True, help='Genotype sample indices for in-sample LD.')
 parser.add_argument('--ld-corr-output-stem', dest='ld_corr_output_stem', required=True, help='Output filestem.')
+parser.add_argument('--weighted', dest='weighted', type=str2bool, default=True, help='Whether to use weighted regression (True/False).')
 args = parser.parse_args()
 
 est_borzoi_effect_size_file = args.est_borzoi_effect_size_file
@@ -498,6 +521,7 @@ sim_variant_gene_annotation_file = args.sim_variant_gene_annotation_file
 genotype_plink_filestem = args.genotype_plink_filestem
 genotype_sample_mapping_file = args.genotype_sample_mapping_file
 ld_corr_output_stem = args.ld_corr_output_stem
+weighted = args.weighted
 
 
 
@@ -520,7 +544,7 @@ gene_id_to_variant_gene_anno, anno_names = create_mapping_from_gene_id_to_varian
 genotype_sample_indices = (np.loadtxt(genotype_sample_mapping_file)).astype(int)
 
 # Generate per gene ld-means
-gene_id_to_ld_means = generate_gene_ld_means(gene_id_to_est_borzoi_effects, gene_id_to_est_borzoi_effects_unstandardized, gene_id_to_est_eqtl_effects, gene_id_to_variant_gene_anno, genotype_plink_filestem, anno_names, genotype_sample_indices)
+gene_id_to_ld_means = generate_gene_ld_means(gene_id_to_est_borzoi_effects, gene_id_to_est_borzoi_effects_unstandardized, gene_id_to_est_eqtl_effects, gene_id_to_variant_gene_anno, genotype_plink_filestem, anno_names, genotype_sample_indices, weighted)
 del gene_id_to_est_eqtl_effects
 del gene_id_to_variant_gene_anno
 del gene_id_to_est_borzoi_effects
