@@ -4,6 +4,7 @@ import sys
 import pdb
 import gzip
 import pickle
+import argparse
 from pandas_plink import read_plink
 import time
 
@@ -229,7 +230,7 @@ def extract_gene_chrom_num(var_id_to_est_borzoi_effects):
 	chrom_num = var_id_to_est_borzoi_effects[var_id][2]
 	return chrom_num
 
-def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_effects_unstandardized, gene_id_to_est_eqtl_effects, gene_id_to_variant_gene_anno, onek_genomes_plink_filestem, anno_names, genotype_sample_indices):
+def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_effects_unstandardized, gene_id_to_est_eqtl_effects, gene_id_to_variant_gene_anno, genotype_plink_filestem, anno_names, genotype_sample_indices):
 	# Initialize output object
 	gene_to_ld_means = {}
 	
@@ -243,7 +244,7 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_e
 		# string of chromosome name
 		chrom_string = 'chr' + str(chrom_num)
 		# Load in chromosome plink data
-		(bim, fam, G) = read_plink(onek_genomes_plink_filestem + str(chrom_num))
+		(bim, fam, G) = read_plink(genotype_plink_filestem + str(chrom_num))
 		# Create mapping from variant id to index
 		rsid_to_genotype_index = create_mapping_from_variant_id_to_genotype_index(np.asarray(bim['snp']))
 		# Create mapping from rsid to a0, a1
@@ -333,39 +334,51 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_e
 			sq_LD = LD**2
 			adj_sq_ld = sq_LD - (1.0 - sq_LD)/(NNN - 2.0)
 
+
 			gene_to_ld_means[gene_id] = {}
-			gene_to_ld_means[gene_id]['eQTL_effect_sizes'] = eqtl_effects
-			gene_to_ld_means[gene_id]['eQTL_effect_ses'] = eqtl_effect_ses
 			gene_to_ld_means[gene_id]['borzoi_effects'] = borzoi_effects
 			gene_to_ld_means[gene_id]['borzoi_effects_unstandardized'] = borzoi_effects_unstandardized
 			gene_to_ld_means[gene_id]['variant_anno'] = variant_anno
-			gene_to_ld_means[gene_id]['ld_means'] = LD @ (variant_anno * borzoi_effects[:, None])
-			gene_to_ld_means[gene_id]['ld_scores'] = (adj_sq_ld) @ variant_anno
+
+			# Mean (calibration) regression: X = ld_means, y = eQTL effect sizes.
+			# Precompute X^T X and X^T y (finite rows only) so genes can be summed downstream.
+			ld_means = LD @ (variant_anno * borzoi_effects[:, None])
+			calibration_valid = np.isfinite(eqtl_effects) & np.all(np.isfinite(ld_means), axis=1)
+			calibration_x = ld_means[calibration_valid, :]
+			calibration_y = eqtl_effects[calibration_valid]
+			gene_to_ld_means[gene_id]['calibration_xt_x'] = calibration_x.T @ calibration_x
+			gene_to_ld_means[gene_id]['calibration_xt_y'] = calibration_x.T @ calibration_y
+
+			# Variance (per-SNP eQTL h2) regression: X = ld_scores, y = eQTL effect^2 - se^2.
+			ld_scores = adj_sq_ld @ variant_anno
+			eqtl_var_y = np.square(eqtl_effects) - np.square(eqtl_effect_ses)
+			eqtl_var_valid = np.isfinite(eqtl_var_y) & np.all(np.isfinite(ld_scores), axis=1)
+			eqtl_var_x = ld_scores[eqtl_var_valid, :]
+			eqtl_var_y = eqtl_var_y[eqtl_var_valid]
+			gene_to_ld_means[gene_id]['eqtl_var_xt_x'] = eqtl_var_x.T @ eqtl_var_x
+			gene_to_ld_means[gene_id]['eqtl_var_xt_y'] = eqtl_var_x.T @ eqtl_var_y
 
 
 	return gene_to_ld_means
 
 
 def compute_calibration_coefs(gene_id_to_ld_means, ordered_gene_names):
-	yy = []
-	xx = []
+	# Accumulate the per-gene normal equations (X^T X and X^T y) across genes
+	xt_x = None
+	xt_y = None
 	annos = []
 	for gene_name in ordered_gene_names:
-		yy.append(gene_id_to_ld_means[gene_name]['eQTL_effect_sizes'])
-		xx.append(gene_id_to_ld_means[gene_name]['ld_means'])
-		annos.append(gene_id_to_ld_means[gene_name]['variant_anno'])
-	yy = np.hstack(yy)
-	xx = np.vstack(xx)
+		gene_data = gene_id_to_ld_means[gene_name]
+		if xt_x is None:
+			xt_x = np.zeros_like(gene_data['calibration_xt_x'])
+			xt_y = np.zeros_like(gene_data['calibration_xt_y'])
+		xt_x = xt_x + gene_data['calibration_xt_x']
+		xt_y = xt_y + gene_data['calibration_xt_y']
+		annos.append(gene_data['variant_anno'])
 	annos = np.vstack(annos)
 
-	valid_rows = np.isfinite(yy) & np.all(np.isfinite(xx), axis=1)
-	yy = yy[valid_rows]
-	xx = xx[valid_rows, :]
-	#annos = annos[valid_rows, :]
+	calibration_coefs, _, _, _ = np.linalg.lstsq(xt_x, xt_y, rcond=None)
 
-
-	calibration_coefs, _, _, _ = np.linalg.lstsq(xx, yy, rcond=None)
-	
 	pred_coefs = np.dot(annos, calibration_coefs)
 	avg_pred_coefs = []
 	for anno_iter in range(annos.shape[1]):
@@ -427,26 +440,22 @@ def compute_unstandardized_borzoi_variances(gene_id_to_ld_means, ordered_gene_na
 
 
 def compute_eqtl_variances(gene_id_to_ld_means, ordered_gene_names):
-	yy = []
-	xx = []
+	# Accumulate the per-gene normal equations (X^T X and X^T y) across genes
+	xt_x = None
+	xt_y = None
 	annos = []
 	for gene_name in ordered_gene_names:
-		yy.append(np.square(gene_id_to_ld_means[gene_name]['eQTL_effect_sizes']) - np.square(gene_id_to_ld_means[gene_name]['eQTL_effect_ses']))
-		xx.append(gene_id_to_ld_means[gene_name]['ld_scores'])
-		annos.append(gene_id_to_ld_means[gene_name]['variant_anno'])
-
-	yy = np.hstack(yy)
-	xx = np.vstack(xx)
+		gene_data = gene_id_to_ld_means[gene_name]
+		if xt_x is None:
+			xt_x = np.zeros_like(gene_data['eqtl_var_xt_x'])
+			xt_y = np.zeros_like(gene_data['eqtl_var_xt_y'])
+		xt_x = xt_x + gene_data['eqtl_var_xt_x']
+		xt_y = xt_y + gene_data['eqtl_var_xt_y']
+		annos.append(gene_data['variant_anno'])
 	annos = np.vstack(annos)
 
-	valid_rows = np.isfinite(yy) & np.all(np.isfinite(xx), axis=1)
-	yy = yy[valid_rows]
-	xx = xx[valid_rows, :]
-	#annos = annos[valid_rows, :]
+	taus, _, _, _ = np.linalg.lstsq(xt_x, xt_y, rcond=None)
 
-
-	taus, _, _, _ = np.linalg.lstsq(xx, yy, rcond=None)
-	
 	pred_per_snp_h2s = np.dot(annos, taus)
 	avg_pred_h2s = []
 	for anno_iter in range(annos.shape[1]):
@@ -474,12 +483,21 @@ def run_ld_corr(ordered_gene_names, gene_id_to_ld_means):
 ##########################
 # Command line args
 ##########################
-est_borzoi_effect_size_file = sys.argv[1]
-est_eqtl_effect_size_file = sys.argv[2]
-sim_variant_gene_annotation_file = sys.argv[3]
-onek_genomes_plink_filestem = sys.argv[4]
-genotype_sample_mapping_file = sys.argv[5]
-ld_corr_output_stem = sys.argv[6]
+parser = argparse.ArgumentParser(description='Estimate eQTL-Borzoi LD correlations.')
+parser.add_argument('--est-borzoi-effect-size-file', dest='est_borzoi_effect_size_file', required=True, help='Estimated Borzoi effect sizes file.')
+parser.add_argument('--est-eqtl-effect-size-file', dest='est_eqtl_effect_size_file', required=True, help='Estimated eQTL effect sizes file.')
+parser.add_argument('--sim-variant-gene-annotation-file', dest='sim_variant_gene_annotation_file', required=True, help='Variant-gene annotation file.')
+parser.add_argument('--genotype-plink-filestem', dest='genotype_plink_filestem', required=True, help='Genotype plink filestem (per-chromosome number appended).')
+parser.add_argument('--genotype-sample-mapping-file', dest='genotype_sample_mapping_file', required=True, help='Genotype sample indices for in-sample LD.')
+parser.add_argument('--ld-corr-output-stem', dest='ld_corr_output_stem', required=True, help='Output filestem.')
+args = parser.parse_args()
+
+est_borzoi_effect_size_file = args.est_borzoi_effect_size_file
+est_eqtl_effect_size_file = args.est_eqtl_effect_size_file
+sim_variant_gene_annotation_file = args.sim_variant_gene_annotation_file
+genotype_plink_filestem = args.genotype_plink_filestem
+genotype_sample_mapping_file = args.genotype_sample_mapping_file
+ld_corr_output_stem = args.ld_corr_output_stem
 
 
 
@@ -502,7 +520,7 @@ gene_id_to_variant_gene_anno, anno_names = create_mapping_from_gene_id_to_varian
 genotype_sample_indices = (np.loadtxt(genotype_sample_mapping_file)).astype(int)
 
 # Generate per gene ld-means
-gene_id_to_ld_means = generate_gene_ld_means(gene_id_to_est_borzoi_effects, gene_id_to_est_borzoi_effects_unstandardized, gene_id_to_est_eqtl_effects, gene_id_to_variant_gene_anno, onek_genomes_plink_filestem, anno_names, genotype_sample_indices)
+gene_id_to_ld_means = generate_gene_ld_means(gene_id_to_est_borzoi_effects, gene_id_to_est_borzoi_effects_unstandardized, gene_id_to_est_eqtl_effects, gene_id_to_variant_gene_anno, genotype_plink_filestem, anno_names, genotype_sample_indices)
 del gene_id_to_est_eqtl_effects
 del gene_id_to_variant_gene_anno
 del gene_id_to_est_borzoi_effects
@@ -535,7 +553,7 @@ bs_per_snp_eqtl_h2 = []
 bs_borzoi_variances = []
 bs_unstandardized_borzoi_variances = []
 for bs_iter in range(n_bs):
-	print(bs_iter)
+	print('bootstrap itera: ' + str(bs_iter))
 	bs_genes = np.random.choice(ordered_gene_names, size=len(ordered_gene_names), replace=True)
 	tmp_bs_calibration_slopes, tmp_bs_per_snp_eqtl_h2, tmp_bs_borzoi_variances, tmp_bs_unstandardized_borzoi_variances = run_ld_corr(bs_genes, gene_id_to_ld_means)
 

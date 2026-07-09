@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -t 0-6:00                         # Runtime in D-HH:MM format
+#SBATCH -t 0-5:00                         # Runtime in D-HH:MM format
 #SBATCH -p bch-compute                        # Partition to run in
 #SBATCH --mem=30GB 
 
@@ -23,8 +23,23 @@ conda activate plink_env
 
 
 
-python run_ld_corr.py $borzoi_effect_file $eqtl_effects_file $borzoi_annotation_file $genotype_stem $genotype_sample_mapping_file $ld_corr_output_stem
+python run_ld_corr.py \
+	--est-borzoi-effect-size-file $borzoi_effect_file \
+	--est-eqtl-effect-size-file $eqtl_effects_file \
+	--sim-variant-gene-annotation-file $borzoi_annotation_file \
+	--genotype-plink-filestem $genotype_stem \
+	--genotype-sample-mapping-file $genotype_sample_mapping_file \
+	--ld-corr-output-stem $ld_corr_output_stem
 
+
+
+
+
+
+
+###############################
+# Old. not currently used
+###############################
 
 if false; then
 python run_ld_corr_HE.py $borzoi_effect_file $eqtl_effects_file $borzoi_annotation_file $genotype_stem $genotype_sample_mapping_file $ld_corr_output_stem
