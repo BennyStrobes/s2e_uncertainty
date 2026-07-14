@@ -12,8 +12,8 @@ borzoi_gtex_unique_target_names_file=${borzoi_results_dir}"targets_gtex_only_uni
 
 borzoi_gtex_independent_target_names_file=${borzoi_results_dir}"targets_gtex_only_independent_ordered.txt"
 
-
 borzoi_non_gtex_target_names_file=${borzoi_results_dir}"targets_interesting_non_gtex_ordered.txt"
+
 
 
 # Directory containing genotype data
@@ -44,6 +44,9 @@ gtex_fm_file="/lab-share/CHIP-Strober-e2/Public/GTEx/fine_mapping/v8/GTEx_49tiss
 output_root="/lab-share/CHIP-Strober-e2/Public/ben/s2e_uncertainty/eqtl_borzoi_correlations/"
 
 borzoi_output_dir=${output_root}"processed_borzoi/"
+
+bootstrapped_cross_tissue_gene_sets_dir=${output_root}"bootstrapped_gene_sets/"
+
 ld_corr_results_output_dir=${output_root}"ld_corr_results/"
 
 cross_tissue_ld_corr_results_output_dir=${output_root}"cross_tissue_ld_corr_results/"
@@ -84,17 +87,6 @@ visualization_dir=${output_root}"visualization/"
 
 #####
 # 1. eQTLs have already been processed
-if false; then
-for i in {1..10}
-do
-    sbatch test_batch_submission.sh
-done
-fi
-
-
-
-
-
 
 #####
 # 2. Borzoi effects
@@ -130,6 +122,12 @@ tail -n +2 "$borzoi_gtex_independent_target_names_file" | while IFS=$'\t' read -
 done
 fi
 
+
+#################
+# Generate cross tissue gene sets (and bootstrapped gene sets)
+#################
+
+sh generate_cross_tissue_bootstrapped_gene_sets.sh ${eqtl_sumstats_dir} ${borzoi_output_dir} ${borzoi_gtex_unique_target_names_file} ${bootstrapped_cross_tissue_gene_sets_dir}
 
 
 #################
@@ -192,6 +190,15 @@ done
 fi
 
 
+
+
+
+if false; then
+anno_method="borzoi_magnitude_bins"
+		borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
+		ld_corr_output_stem=${ld_corr_results_output_dir}"ld_corr_results_"${target_tissue}"_"${target_sample}"_"${anno_method}"_newer"
+		sh run_ld_corr.sh $borzoi_effect_file $eqtl_sumstats_file $borzoi_annotation_file $genotype_stem $genotype_sample_mapping_file $ld_corr_output_stem
+fi
 
 
 

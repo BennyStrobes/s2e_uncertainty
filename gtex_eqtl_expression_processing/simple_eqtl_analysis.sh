@@ -19,5 +19,7 @@ orig_eqtl_sumstats_h5_stem="${4}"
 new_eqtl_sumstats_output_file="${5}"
 gtex_v10_pc_genes_gtf="${6}"
 
+echo $expression_file
+
 
 python simple_eqtl_analysis.py $expression_file $genotype_sample_mapping_file $plink_stem $orig_eqtl_sumstats_h5_stem $new_eqtl_sumstats_output_file $gtex_v10_pc_genes_gtf

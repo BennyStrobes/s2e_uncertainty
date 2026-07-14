@@ -10,6 +10,8 @@ borzoi_gtex_target_names_file=${borzoi_results_dir}"targets_gtex_only_ordered.tx
 borzoi_gtex_independent_target_names_file=${borzoi_results_dir}"targets_gtex_only_independent_ordered.txt"
 borzoi_gtex_independent_target_names_file=${borzoi_results_dir}"targets_gtex_only_unique_ordered.txt"
 
+
+
 # Directory containing genotype data
 plink2_genotype_data_dir="/lab-share/CHIP-Strober-e2/Public/ben/process_gtex_genotype_data/processed_genotype/"
 
