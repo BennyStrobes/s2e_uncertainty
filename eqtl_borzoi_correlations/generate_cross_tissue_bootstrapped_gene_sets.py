@@ -1,9 +1,8 @@
 import numpy as np
 import os
 import sys
-import pdb
 import gzip
-
+import pdb
 
 def extract_tissue_samples_from_target_names_file(borzoi_gtex_independent_target_names_file):
 	# Columns (tab-separated, with header):
@@ -24,10 +23,10 @@ def extract_tissue_samples_from_target_names_file(borzoi_gtex_independent_target
 	return tissue_samples
 
 
-def extract_genes_from_borzoi_effect_file(borzoi_effect_file):
-	# Borzoi effect file has header; gene id is in column 0
+def extract_genes_from_sumstats_file(sumstats_file):
+	# Both borzoi effect files and eqtl sumstats files have a header; gene id is in column 0
 	genes = {}
-	f = gzip.open(borzoi_effect_file, 'rt')
+	f = gzip.open(sumstats_file, 'rt')
 	head_count = 0
 	for line in f:
 		line = line.rstrip()
@@ -60,6 +59,7 @@ tissue_to_eqtl_sumstats_file = {}
 tissue_to_borzoi_effect_file = {}
 tissue_to_genes = {}
 for target_tissue, target_sample in tissue_samples:
+	print(target_tissue)
 	eqtl_sumstats_file = eqtl_sumstats_dir + 'eqtl_results_' + target_tissue + '_sumstats.txt.gz'
 	borzoi_effect_file = borzoi_output_dir + target_tissue + '_' + target_sample + '_borzoi_effects.txt.gz'
 
@@ -72,24 +72,23 @@ for target_tissue, target_sample in tissue_samples:
 
 	tissue_to_eqtl_sumstats_file[target_tissue] = eqtl_sumstats_file
 	tissue_to_borzoi_effect_file[target_tissue] = borzoi_effect_file
-	#tissue_to_genes[target_tissue] = extract_genes_from_borzoi_effect_file(borzoi_effect_file)
 
-pdb.set_trace()
+	# A gene is 'in a tissue' if it appears in BOTH the eqtl sumstats file and the borzoi effect file
+	eqtl_genes = set(extract_genes_from_sumstats_file(eqtl_sumstats_file).keys())
+	borzoi_genes = set(extract_genes_from_sumstats_file(borzoi_effect_file).keys())
+	tissue_to_genes[target_tissue] = eqtl_genes & borzoi_genes
+
 ordered_tissues = sorted(tissue_to_genes.keys())
 print(str(len(ordered_tissues)) + ' tissues with input files found')
 
 
-# Cross-tissue gene set: genes present in every tissue
-cross_tissue_genes = None
+# Cross-tissue gene set: genes present in at least one tissue
+cross_tissue_genes = set()
 for target_tissue in ordered_tissues:
-	tissue_genes = set(tissue_to_genes[target_tissue].keys())
-	if cross_tissue_genes is None:
-		cross_tissue_genes = tissue_genes
-	else:
-		cross_tissue_genes = cross_tissue_genes & tissue_genes
+	cross_tissue_genes = cross_tissue_genes | tissue_to_genes[target_tissue]
 
 cross_tissue_genes = np.sort(np.asarray(sorted(cross_tissue_genes)))
-print(str(len(cross_tissue_genes)) + ' genes shared across all tissues')
+print(str(len(cross_tissue_genes)) + ' genes present in at least one tissue')
 
 
 # Write out the (observed) cross-tissue gene set
@@ -102,7 +101,7 @@ t.close()
 
 
 # Generate bootstrapped cross-tissue gene sets (sample genes with replacement)
-num_bootstraps = 100
+num_bootstraps = 500
 np.random.seed(1)
 n_genes = len(cross_tissue_genes)
 for bootstrap_iter in range(num_bootstraps):

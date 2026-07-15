@@ -8,7 +8,7 @@ borzoi_results_dir="/lab-share/CHIP-Strober-e2/Public/ben/borzoi_genome_wide_run
 
 # Directory containing borzoi gtex target indices and names
 borzoi_gtex_target_names_file=${borzoi_results_dir}"targets_gtex_only_ordered.txt"
-borzoi_gtex_unique_target_names_file=${borzoi_results_dir}"targets_gtex_only_unique_ordered.txt"
+borzoi_gtex_unique_target_names_file=${borzoi_results_dir}"targets_gtex_eqtl_only_unique_ordered.txt"
 
 borzoi_gtex_independent_target_names_file=${borzoi_results_dir}"targets_gtex_only_independent_ordered.txt"
 
@@ -96,7 +96,6 @@ tail -n +2 "$borzoi_gtex_unique_target_names_file" | while IFS=$'\t' read -r ori
 done
 fi
 
-
 if false; then
 tail -n +2 "$borzoi_non_gtex_target_names_file" | while IFS=$'\t' read -r orig_target_index borzoi_target_index target_identifier target_description gtex_tissue; do
 	sbatch preprocess_borzoi_data_for_ld_corr.sh $gtex_v10_pc_genes_gtf $borzoi_results_dir $borzoi_target_index $gtex_tissue $target_identifier $borzoi_output_dir
@@ -126,9 +125,9 @@ fi
 #################
 # Generate cross tissue gene sets (and bootstrapped gene sets)
 #################
-
-sh generate_cross_tissue_bootstrapped_gene_sets.sh ${eqtl_sumstats_dir} ${borzoi_output_dir} ${borzoi_gtex_unique_target_names_file} ${bootstrapped_cross_tissue_gene_sets_dir}
-
+if false; then
+sbatch generate_cross_tissue_bootstrapped_gene_sets.sh ${eqtl_sumstats_dir} ${borzoi_output_dir} ${borzoi_gtex_unique_target_names_file} ${bootstrapped_cross_tissue_gene_sets_dir}
+fi
 
 #################
 # Run LD-corr
