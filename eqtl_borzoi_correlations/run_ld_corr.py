@@ -512,6 +512,7 @@ parser.add_argument('--sim-variant-gene-annotation-file', dest='sim_variant_gene
 parser.add_argument('--genotype-plink-filestem', dest='genotype_plink_filestem', required=True, help='Genotype plink filestem (per-chromosome number appended).')
 parser.add_argument('--genotype-sample-mapping-file', dest='genotype_sample_mapping_file', required=True, help='Genotype sample indices for in-sample LD.')
 parser.add_argument('--ld-corr-output-stem', dest='ld_corr_output_stem', required=True, help='Output filestem.')
+parser.add_argument('--bootstrapped-gene-set-filestem', dest='bootstrapped_gene_sets_filestem', default=None, required=False, help='Filestem corresponding to a list of files with bootrapped gene names')
 parser.add_argument('--weighted', dest='weighted', type=str2bool, default=True, help='Whether to use weighted regression (True/False).')
 args = parser.parse_args()
 
@@ -522,7 +523,7 @@ genotype_plink_filestem = args.genotype_plink_filestem
 genotype_sample_mapping_file = args.genotype_sample_mapping_file
 ld_corr_output_stem = args.ld_corr_output_stem
 weighted = args.weighted
-
+bootstrapped_gene_sets_filestem = args.bootstrapped_gene_sets_filestem
 
 
 ##############################
@@ -578,7 +579,14 @@ bs_borzoi_variances = []
 bs_unstandardized_borzoi_variances = []
 for bs_iter in range(n_bs):
 	print('bootstrap itera: ' + str(bs_iter))
-	bs_genes = np.random.choice(ordered_gene_names, size=len(ordered_gene_names), replace=True)
+	if bootstrapped_gene_sets_filestem is None:
+		bs_genes = np.random.choice(ordered_gene_names, size=len(ordered_gene_names), replace=True)
+	else:
+		bootstrapped_gene_set_file = bootstrapped_gene_sets_filestem + str(bs_iter) + '.txt'
+		bs_genes = np.loadtxt(bootstrapped_gene_set_file, dtype=str, skiprows=1)
+		# Global gene sets are cross-tissue; keep only genes this tissue has data for
+		bs_genes = bs_genes[np.isin(bs_genes, ordered_gene_names)]
+	
 	tmp_bs_calibration_slopes, tmp_bs_per_snp_eqtl_h2, tmp_bs_borzoi_variances, tmp_bs_unstandardized_borzoi_variances = run_ld_corr(bs_genes, gene_id_to_ld_means)
 
 	bs_calibration_slopes.append(tmp_bs_calibration_slopes)

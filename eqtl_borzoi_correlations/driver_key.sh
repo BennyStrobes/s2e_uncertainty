@@ -129,9 +129,30 @@ if false; then
 sbatch generate_cross_tissue_bootstrapped_gene_sets.sh ${eqtl_sumstats_dir} ${borzoi_output_dir} ${borzoi_gtex_unique_target_names_file} ${bootstrapped_cross_tissue_gene_sets_dir}
 fi
 
+
 #################
 # Run LD-corr
 #################
+
+
+target_tissue="Muscle_Skeletal"
+target_sample="GTEX-13QJ3-0726-SM-5SI68.1"
+
+eqtl_sumstats_file=$eqtl_sumstats_dir"eqtl_results_"${target_tissue}"_sumstats.txt.gz"
+borzoi_effect_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_borzoi_effects.txt.gz"
+genotype_stem=$processed_genotype_data_dir"gtex_v9_eqtl_chr"
+genotype_sample_mapping_file=$processed_genotype_data_dir"genotype_sample_mapping_to_"${target_tissue}"_expression_samples.txt"
+if false; then
+anno_method="borzoi_magnitude_bins"
+		borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
+		ld_corr_output_stem=${ld_corr_results_output_dir}"ld_corr_results_"${target_tissue}"_"${target_sample}"_"${anno_method}"_newer"
+		sbatch run_ld_corr.sh $borzoi_effect_file $eqtl_sumstats_file $borzoi_annotation_file $genotype_stem $genotype_sample_mapping_file ${bootstrapped_cross_tissue_gene_sets_dir}"cross_tissue_gene_set_bootstrap_" $ld_corr_output_stem
+fi
+
+
+
+
+
 anno_methods=("borzoi_magnitude_bins" "dist_to_tss_bins" "strand_dist_to_tss_bins" "af_bins" "borzoi_magnitude_binsXaf_bins" "borzoi_magnitude_binsXdist_to_tss_bins")
 anno_methods=("intercept")
 
@@ -186,17 +207,6 @@ for anno_method in "${anno_methods[@]}"; do
 		ld_corr_output_stem=${ld_corr_results_output_dir}"ld_corr_results_"${target_tissue}"_"${target_sample}"_"${anno_method}"_newer"
 		sbatch run_ld_corr.sh $borzoi_effect_file $eqtl_sumstats_file $borzoi_annotation_file $genotype_stem $genotype_sample_mapping_file $ld_corr_output_stem
 done
-fi
-
-
-
-
-
-if false; then
-anno_method="borzoi_magnitude_bins"
-		borzoi_annotation_file=${borzoi_output_dir}${target_tissue}"_"${target_sample}"_"${anno_method}"_annotations.txt.gz"
-		ld_corr_output_stem=${ld_corr_results_output_dir}"ld_corr_results_"${target_tissue}"_"${target_sample}"_"${anno_method}"_newer"
-		sh run_ld_corr.sh $borzoi_effect_file $eqtl_sumstats_file $borzoi_annotation_file $genotype_stem $genotype_sample_mapping_file $ld_corr_output_stem
 fi
 
 
