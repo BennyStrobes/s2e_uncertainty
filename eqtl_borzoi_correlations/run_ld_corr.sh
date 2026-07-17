@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH -t 0-3:00                         # Runtime in D-HH:MM format
+#SBATCH -t 0-10:00                         # Runtime in D-HH:MM format
 #SBATCH -p bch-compute                        # Partition to run in
-#SBATCH --mem=20GB 
+#SBATCH --mem=40GB 
 
 
 
@@ -14,11 +14,10 @@ bootstrapped_cross_tissue_gene_sets_file_stem="${6}"
 ld_corr_output_stem="${7}"
 
 
-if false; then
 source ~/.bashrc
 conda activate plink_env
-fi
 
+date
 
 python run_ld_corr.py \
 	--est-borzoi-effect-size-file $borzoi_effect_file \
@@ -30,6 +29,11 @@ python run_ld_corr.py \
 	--bootstrapped-gene-set-filestem ${bootstrapped_cross_tissue_gene_sets_file_stem} \
     --weighted "True"
 
+
+date
+
+if false; then
+# Without cross-tissue shared bootstraps
 python run_ld_corr.py \
 	--est-borzoi-effect-size-file $borzoi_effect_file \
 	--est-eqtl-effect-size-file $eqtl_effects_file \
@@ -38,7 +42,7 @@ python run_ld_corr.py \
 	--genotype-sample-mapping-file $genotype_sample_mapping_file \
 	--ld-corr-output-stem $ld_corr_output_stem"_local_bs" \
     --weighted "True"
-
+fi
 
 
 
