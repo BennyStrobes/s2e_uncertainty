@@ -439,7 +439,6 @@ def generate_gene_ld_means(gene_id_to_est_borzoi_effects,gene_id_to_est_borzoi_e
 					eqtl_var_xt_x = eqtl_var_x.T @ eqtl_var_x
 					eqtl_var_xt_y = eqtl_var_x.T @ eqtl_var_y_valid
 
-				pdb.set_trace()
 				gene_to_ld_means[gene_id][anno_name] = {}
 				gene_to_ld_means[gene_id][anno_name]['anno_xt_x'] = anno_xt_x
 				gene_to_ld_means[gene_id][anno_name]['anno_col_sums'] = anno_col_sums
@@ -548,13 +547,11 @@ gene_id_to_est_eqtl_effects, variant_id_to_genotype_sdev = create_mapping_from_g
 
 
 # Create mapping from gene id to vector of est borzoi effects
-print('a')
 gene_id_to_est_borzoi_effects = create_mapping_from_gene_id_to_causal_effects(est_borzoi_effect_size_file, variant_id_to_genotype_sdev,standardize=True)
 gene_id_to_est_borzoi_effects_unstandardized = create_mapping_from_gene_id_to_causal_effects(est_borzoi_effect_size_file, variant_id_to_genotype_sdev,standardize=False)
 
 
 # Create mapping from gene id to vector of variant-gene annotations
-print('b')
 gene_id_to_variant_gene_anno, anno_names = create_mapping_from_gene_id_to_variant_gene_annotations(sim_variant_gene_annotation_file)
 
 # Extract the categories making up each annotation
@@ -565,7 +562,7 @@ for anno_name in anno_names:
 
 # Load in genotype sample indices (for this tissue) to achieve in sample ld
 genotype_sample_indices = (np.loadtxt(genotype_sample_mapping_file)).astype(int)
-print('c')
+
 # Generate per gene ld-means
 gene_id_to_ld_means = generate_gene_ld_means(gene_id_to_est_borzoi_effects, gene_id_to_est_borzoi_effects_unstandardized, gene_id_to_est_eqtl_effects, gene_id_to_variant_gene_anno, genotype_plink_filestem, anno_names, anno_name_to_n_categories, genotype_sample_indices, weighted)
 del gene_id_to_est_eqtl_effects
