@@ -7,15 +7,39 @@
 
 borzoi_effect_file="${1}"
 annotation_name_file="${2}"
-borzoi_annotation_file="${3}"
+borzoi_annotation_filestem="${3}"
 eqtl_sumstats_file="${4}"
-tissue_name="${5}"
-baselineLD_anno_dir="${6}"
+baselineLD_anno_dir="${5}"
 
 source ~/.bashrc
 conda activate plink_env
 
 
-echo $borzoi_annotation_file
+echo $borzoi_annotation_filestem
 
-python annotate_variant_gene_pairs.py $borzoi_effect_file $annotation_name_file $borzoi_annotation_file $eqtl_sumstats_file $tissue_name $baselineLD_anno_dir
+
+##############################
+# Version without annotations stratified by magnitude
+##############################
+magnitude_stratification="False"
+borzoi_annotation_file=${borzoi_annotation_filestem}"_default.txt.gz"
+python annotate_variant_gene_pairs.py \
+	--borzoi-effect-file $borzoi_effect_file \
+	--annotation-name-file $annotation_name_file \
+	--borzoi-annotation-file $borzoi_annotation_file \
+	--eqtl-sumstats-file $eqtl_sumstats_file \
+	--baselineLD-anno-dir $baselineLD_anno_dir \
+	--stratify-by-borzoi-magnitude $magnitude_stratification
+
+##############################
+# Version with annotations stratified by magnitude
+##############################
+magnitude_stratification="True"
+borzoi_annotation_file=${borzoi_annotation_filestem}"_magnitude_stratified.txt.gz"
+python annotate_variant_gene_pairs.py \
+	--borzoi-effect-file $borzoi_effect_file \
+	--annotation-name-file $annotation_name_file \
+	--borzoi-annotation-file $borzoi_annotation_file \
+	--eqtl-sumstats-file $eqtl_sumstats_file \
+	--baselineLD-anno-dir $baselineLD_anno_dir \
+	--stratify-by-borzoi-magnitude $magnitude_stratification

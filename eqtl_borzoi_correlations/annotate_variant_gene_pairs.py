@@ -2,6 +2,26 @@ import numpy as np
 import sys
 import pdb
 import gzip
+import argparse
+
+
+# Bins used when stratifying every annotation by borzoi magnitude (matches the 'borzoi_magnitude_bins' annotation)
+borzoi_magnitude_stratification_bins = [0.0, 0.001, 0.01, 0.075, 0.2, 10.0]
+
+# Annotations of these kinds are already a deterministic function of borzoi magnitude, so
+# crossing them with magnitude bins again would leave most of the interaction categories empty
+magnitude_dependent_anno_kinds = ['borzoi_magnitude', 'borzoi_effect_size', 'borzoi_magnitudeXvg_pair_info']
+
+
+def str2bool(v):
+	if isinstance(v, bool):
+		return v
+	if v.lower() in ('yes', 'true', 't', 'y', '1'):
+		return True
+	elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+		return False
+	else:
+		raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
 def write_annotation_header(data, t, anno_names):
@@ -49,6 +69,28 @@ def create_interaction_category_names(magnitude_bins, other_bins, other_bin_pref
 		for other_bin_iter in range(len(other_bins)-1):
 			category_names.append('magnitude_bin' + str(magnitude_bin_iter) + 'X' + other_bin_prefix + str(other_bin_iter))
 	return category_names
+
+
+def create_magnitude_stratified_category_names(magnitude_bins, base_category_names):
+	category_names = []
+	for magnitude_bin_iter in range(len(magnitude_bins)-1):
+		for base_category_name in base_category_names:
+			category_names.append('magnitude_bin' + str(magnitude_bin_iter) + 'X' + base_category_name)
+	return category_names
+
+
+def create_magnitude_stratified_annotation_config(base_anno_config, magnitude_bins):
+	# Wrap an annotation so each of its categories is further split by borzoi magnitude bin.
+	# An annotation with C categories becomes an annotation with C*len(magnitude_bins-1) categories.
+	anno_config = {}
+	anno_config['anno_name'] = 'borzoi_magnitude_stratifiedX' + base_anno_config['anno_name']
+	anno_config['source'] = base_anno_config['source']
+	anno_config['kind'] = 'magnitude_stratified'
+	anno_config['base_anno_config'] = base_anno_config
+	anno_config['magnitude_bins'] = magnitude_bins
+	anno_config['n_base_categories'] = len(base_anno_config['category_names'])
+	anno_config['category_names'] = create_magnitude_stratified_category_names(magnitude_bins, base_anno_config['category_names'])
+	return anno_config
 
 
 def create_custom_annotation_config(anno_name):
@@ -118,7 +160,7 @@ def create_sldsc_annotation_config(anno_name, sldsc_index):
 	return anno_config
 
 
-def create_annotation_configs(anno_names, anno_sources):
+def create_annotation_configs(anno_names, anno_sources, stratify_by_borzoi_magnitude):
 	anno_configs = []
 	sldsc_anno_names = []
 	for anno_iter, anno_name in enumerate(anno_names):
@@ -127,6 +169,13 @@ def create_annotation_configs(anno_names, anno_sources):
 		else:
 			anno_config = create_sldsc_annotation_config(anno_name, len(sldsc_anno_names))
 			sldsc_anno_names.append(anno_name)
+
+		if stratify_by_borzoi_magnitude:
+			if anno_config['kind'] in magnitude_dependent_anno_kinds:
+				print('Leaving ' + anno_config['anno_name'] + ' unstratified (it is already a function of borzoi magnitude)')
+			else:
+				anno_config = create_magnitude_stratified_annotation_config(anno_config, borzoi_magnitude_stratification_bins)
+
 		anno_config['category_counts'] = np.zeros(len(anno_config['category_names']), dtype=int)
 		anno_config['missing_count'] = 0
 		anno_configs.append(anno_config)
@@ -176,6 +225,16 @@ def extract_category_index(anno_config, data, vg_pair_info, variant_to_sldsc_ind
 		if magnitude_bin_index == -1 or other_bin_index == -1:
 			return -1
 		return (magnitude_bin_index*(len(anno_config['other_bins'])-1)) + other_bin_index
+
+	if anno_kind == 'magnitude_stratified':
+		# Category index of the underlying annotation, then split that category by borzoi magnitude bin
+		base_category_index = extract_category_index(anno_config['base_anno_config'], data, vg_pair_info, variant_to_sldsc_index, sldsc_anno_mat)
+		if base_category_index == -1:
+			return -1
+		magnitude_bin_index = extract_bin_index(np.abs(float(data[6])), anno_config['magnitude_bins'])
+		if magnitude_bin_index == -1:
+			return -1
+		return (magnitude_bin_index*anno_config['n_base_categories']) + base_category_index
 
 	if anno_kind == 'sldsc':
 		var_id = data[2] + ':' + data[3]
@@ -326,18 +385,32 @@ def print_annotation_category_counts(anno_configs):
 			print('\t' + category_name + ': ' + str(anno_config['category_counts'][category_iter]))
 		if anno_config['missing_count'] > 0:
 			print('\tno category: ' + str(anno_config['missing_count']))
+		# Empty categories give un-estimable per-category effects downstream in run_ld_corr
+		n_empty_categories = np.sum(anno_config['category_counts'] == 0)
+		if n_empty_categories > 0:
+			print('\tWARNING: ' + str(n_empty_categories) + ' of ' + str(len(anno_config['category_names'])) + ' categories contain no variant-gene pairs')
 	return
 
 
 #####################
 # Command line args
 #####################
-borzoi_effect_file = sys.argv[1]
-annotation_name_file = sys.argv[2]
-borzoi_annotation_file = sys.argv[3]
-eqtl_sumstats_file = sys.argv[4]
-tissue_name = sys.argv[5]
-baselineLD_anno_dir = sys.argv[6]
+parser = argparse.ArgumentParser(description='Annotate variant-gene pairs with the category each pair falls in, for each annotation.')
+parser.add_argument('--borzoi-effect-file', dest='borzoi_effect_file', required=True, help='Borzoi effect sizes file (the variant-gene pairs to annotate).')
+parser.add_argument('--annotation-name-file', dest='annotation_name_file', required=True, help='File listing the annotations to include (anno_name, source).')
+parser.add_argument('--borzoi-annotation-file', dest='borzoi_annotation_file', required=True, help='Output variant-gene annotation file. The (annotation, category) file is written alongside it.')
+parser.add_argument('--eqtl-sumstats-file', dest='eqtl_sumstats_file', required=True, help='eQTL summary statistics file (source of MAF and TSS distance).')
+parser.add_argument('--baselineLD-anno-dir', dest='baselineLD_anno_dir', required=True, help='Directory containing the baselineLD annotation files (used for s-ldsc annotations).')
+parser.add_argument('--stratify-by-borzoi-magnitude', dest='stratify_by_borzoi_magnitude', type=str2bool, default=False, help='If True, further stratify every annotation by borzoi magnitude bin (True/False).')
+args = parser.parse_args()
+
+borzoi_effect_file = args.borzoi_effect_file
+annotation_name_file = args.annotation_name_file
+borzoi_annotation_file = args.borzoi_annotation_file
+eqtl_sumstats_file = args.eqtl_sumstats_file
+baselineLD_anno_dir = args.baselineLD_anno_dir
+# If True, every annotation is further stratified by borzoi magnitude bin
+stratify_by_borzoi_magnitude = args.stratify_by_borzoi_magnitude
 
 # Describes the (annotation, category) pairs making up the annotation file
 annotation_category_file = borzoi_annotation_file.split('.txt.gz')[0] + '_categories.txt'
@@ -345,8 +418,11 @@ annotation_category_file = borzoi_annotation_file.split('.txt.gz')[0] + '_catego
 
 # Extract the annotations we want to include
 anno_names, anno_sources = extract_annotation_names_and_sources(annotation_name_file)
-anno_configs, sldsc_anno_names = create_annotation_configs(anno_names, anno_sources)
+anno_configs, sldsc_anno_names = create_annotation_configs(anno_names, anno_sources, stratify_by_borzoi_magnitude)
+
 print(str(len(anno_configs)) + ' annotations (' + str(len(sldsc_anno_names)) + ' of them from s-ldsc)')
+if stratify_by_borzoi_magnitude:
+	print('Annotations stratified by ' + str(len(borzoi_magnitude_stratification_bins)-1) + ' borzoi magnitude bins')
 
 # Create mapping from variant-gene pairs to auxiliary info
 vg_pair_info = extract_info_on_each_variant_gene_pair(eqtl_sumstats_file)
