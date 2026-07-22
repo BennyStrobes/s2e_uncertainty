@@ -139,14 +139,14 @@ make_sldmc_magnitude_stratified_bar_plot <- function(df, base_annotation_name, o
 per_tissue_sldmc_magnitude_results <- function(sldmc_results_output_dir, tissue_info_df, annotation_version="default") {
 	# Build a long data frame with one row per (tissue, borzoi magnitude bin), holding both the
 	# correlation and the calibration slope (with bootstrap SEs) from that tissue's per-tissue
-	# S-LDMC bootstrap_stats file (ld_corr_results_<tissue>_<sample>_<version>_bootstrap_stats.txt).
+	# S-LDMC bootstrap_stats file (sldmc_results_<tissue>_<sample>_<version>_bootstrap_stats.txt).
 	results_df = data.frame()
 	for (row_iter in seq_len(nrow(tissue_info_df))) {
 		target_tissue = tissue_info_df$GTEx_tissue[row_iter]
 		target_sample = tissue_info_df$target_identifier[row_iter]
 		stats_file = paste0(
 			sldmc_results_output_dir,
-			"ld_corr_results_",
+			"sldmc_results_",
 			target_tissue,
 			"_",
 			target_sample,
@@ -292,13 +292,13 @@ tissue_info_df = read.table(tissue_names_file, header=TRUE, sep="\t")
 per_tissue_sldmc_default_magnitude_df = per_tissue_sldmc_magnitude_results(sldmc_results_output_dir, tissue_info_df)
 
 # Load in meta-analyzed, default S-LDMC results file
-sldmc_default_df = read.table(paste0(sldmc_results_output_dir, "ld_corr_results_cross_tissue_meta_analyzed_default_bootstrap_stats.txt"), header=TRUE, sep="\t")
+sldmc_default_df = read.table(paste0(sldmc_results_output_dir, "sldmc_results_cross_tissue_meta_analyzed_default_bootstrap_stats.txt"), header=TRUE, sep="\t")
 
 # Load in meta-analyzed, default S-LDMC difference-from-intercept results file
-sldmc_default_diff_df = read.table(paste0(sldmc_results_output_dir, "ld_corr_results_cross_tissue_meta_analyzed_default_intercept_diff_stats.txt"), header=TRUE, sep="\t")
+sldmc_default_diff_df = read.table(paste0(sldmc_results_output_dir, "sldmc_results_cross_tissue_meta_analyzed_default_intercept_diff_stats.txt"), header=TRUE, sep="\t")
 
 # Load in meta-analyzed, magnitude-stratified S-LDMC results file
-sldmc_magnitude_stratified_df = read.table(paste0(sldmc_results_output_dir, "ld_corr_results_cross_tissue_meta_analyzed_magnitude_stratified_bootstrap_stats.txt"), header=TRUE, sep="\t")
+sldmc_magnitude_stratified_df = read.table(paste0(sldmc_results_output_dir, "sldmc_results_cross_tissue_meta_analyzed_magnitude_stratified_bootstrap_stats.txt"), header=TRUE, sep="\t")
 
 
 ########################
@@ -328,7 +328,7 @@ ggsave(sldsc_annotation_forest_output_file, sldsc_annotation_forest_plot, width=
 # S-LDSC annotation forest plot conditional on being in the 3rd borzoi magnitude bin (stratified data)
 ########################
 # Load in meta-analyzed, magnitude-stratified S-LDMC difference-from-intercept results file
-sldmc_magnitude_stratified_diff_df = read.table(paste0(sldmc_results_output_dir, "ld_corr_results_cross_tissue_meta_analyzed_magnitude_stratified_intercept_diff_stats.txt"), header=TRUE, sep="\t")
+sldmc_magnitude_stratified_diff_df = read.table(paste0(sldmc_results_output_dir, "sldmc_results_cross_tissue_meta_analyzed_magnitude_stratified_intercept_diff_stats.txt"), header=TRUE, sep="\t")
 
 for (magnitude_bin_index in 0:4) {
 stratified_present_category = paste0("magnitude_bin", magnitude_bin_index, "Xpresent")

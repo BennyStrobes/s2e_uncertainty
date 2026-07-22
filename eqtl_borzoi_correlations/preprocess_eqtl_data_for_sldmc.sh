@@ -20,4 +20,4 @@ conda activate plink_env
 
 echo $tissue_name
 
-python preprocess_eqtl_data_for_ld_corr.py $gtex_v10_pc_genes_gtf $eqtl_sumstats_dir $tissue_name $eqtl_ss_output_dir
+python preprocess_eqtl_data_for_sldmc.py $gtex_v10_pc_genes_gtf $eqtl_sumstats_dir $tissue_name $eqtl_ss_output_dir

@@ -44,7 +44,7 @@ def extract_annotation_names_and_sources(annotation_name_file):
 			continue
 		anno_name = data[0]
 		anno_source = data[1]
-		if anno_source != 'custom' and anno_source != 'sldsc':
+		if anno_source != 'custom' and anno_source != 'sldsc' and anno_source != 'gene_set':
 			print('assumption eroror: unknown annotation source ' + anno_source)
 			pdb.set_trace()
 		if anno_name in anno_names:
@@ -160,15 +160,33 @@ def create_sldsc_annotation_config(anno_name, sldsc_index):
 	return anno_config
 
 
+def create_gene_set_annotation_config(anno_name):
+	# A gene-set annotation is binary (the variant-gene pair's gene is either in the set or not),
+	# so it becomes a two category partition. Membership is looked up by anno_name (the gene-set name).
+	anno_config = {}
+	anno_config['anno_name'] = anno_name
+	anno_config['source'] = 'gene_set'
+	anno_config['kind'] = 'gene_set'
+	anno_config['category_names'] = ['absent', 'present']
+	return anno_config
+
+
 def create_annotation_configs(anno_names, anno_sources, stratify_by_borzoi_magnitude):
 	anno_configs = []
 	sldsc_anno_names = []
+	gene_set_anno_names = []
 	for anno_iter, anno_name in enumerate(anno_names):
 		if anno_sources[anno_iter] == 'custom':
 			anno_config = create_custom_annotation_config(anno_name)
-		else:
+		elif anno_sources[anno_iter] == 'sldsc':
 			anno_config = create_sldsc_annotation_config(anno_name, len(sldsc_anno_names))
 			sldsc_anno_names.append(anno_name)
+		elif anno_sources[anno_iter] == 'gene_set':
+			anno_config = create_gene_set_annotation_config(anno_name)
+			gene_set_anno_names.append(anno_name)
+		else:
+			print('assumption errror: unknown annotation source ' + anno_sources[anno_iter])
+			pdb.set_trace()
 
 		if stratify_by_borzoi_magnitude:
 			if anno_config['kind'] in magnitude_dependent_anno_kinds:
@@ -179,7 +197,7 @@ def create_annotation_configs(anno_names, anno_sources, stratify_by_borzoi_magni
 		anno_config['category_counts'] = np.zeros(len(anno_config['category_names']), dtype=int)
 		anno_config['missing_count'] = 0
 		anno_configs.append(anno_config)
-	return anno_configs, sldsc_anno_names
+	return anno_configs, sldsc_anno_names, gene_set_anno_names
 
 
 def extract_bin_index(value, bins):
@@ -189,7 +207,7 @@ def extract_bin_index(value, bins):
 	return -1
 
 
-def extract_category_index(anno_config, data, vg_pair_info, variant_to_sldsc_index, sldsc_anno_mat):
+def extract_category_index(anno_config, data, vg_pair_info, variant_to_sldsc_index, sldsc_anno_mat, gene_set_membership):
 	# Returns the index of the category this variant-gene pair falls in (-1 if the pair has no category)
 	anno_kind = anno_config['kind']
 
@@ -228,7 +246,7 @@ def extract_category_index(anno_config, data, vg_pair_info, variant_to_sldsc_ind
 
 	if anno_kind == 'magnitude_stratified':
 		# Category index of the underlying annotation, then split that category by borzoi magnitude bin
-		base_category_index = extract_category_index(anno_config['base_anno_config'], data, vg_pair_info, variant_to_sldsc_index, sldsc_anno_mat)
+		base_category_index = extract_category_index(anno_config['base_anno_config'], data, vg_pair_info, variant_to_sldsc_index, sldsc_anno_mat, gene_set_membership)
 		if base_category_index == -1:
 			return -1
 		magnitude_bin_index = extract_bin_index(np.abs(float(data[6])), anno_config['magnitude_bins'])
@@ -241,6 +259,14 @@ def extract_category_index(anno_config, data, vg_pair_info, variant_to_sldsc_ind
 		if var_id not in variant_to_sldsc_index:
 			return 0
 		return int(sldsc_anno_mat[variant_to_sldsc_index[var_id], anno_config['sldsc_index']])
+
+	if anno_kind == 'gene_set':
+		# Binary: is the variant-gene pair's gene a member of this gene set? (category 1) or not (0).
+		# gene_id is the first column; strip any ensembl version suffix to match the gene-set file.
+		gene_id = data[0].split('.')[0]
+		if gene_id in gene_set_membership[anno_config['anno_name']]:
+			return 1
+		return 0
 
 	print('assumption eroror: unknown annotation kind ' + anno_kind)
 	pdb.set_trace()
@@ -296,6 +322,46 @@ def create_mapping_from_variant_to_sldsc_annos(baselineLD_anno_dir, sldsc_anno_n
 	return variant_to_sldsc_index, sldsc_anno_mat
 
 
+def create_mapping_from_gene_set_to_genes(gene_set_anno_file, gene_set_anno_names):
+	# The gene-set file is a csv where the header is the gene-set names and each column lists (down
+	# the rows) the ensembl gene ids that are members of that gene set (empty cells pad shorter sets).
+	# Returns {gene_set_name: set(member ensembl gene ids)} for the requested gene sets.
+	gene_set_membership = {}
+	if len(gene_set_anno_names) == 0:
+		return gene_set_membership
+
+	f = open(gene_set_anno_file)
+	head_count = 0
+	gene_set_column_indices = {}
+	for line in f:
+		line = line.rstrip('\r\n')
+		data = line.split(',')
+		if head_count == 0:
+			head_count = head_count + 1
+			for gene_set_anno_name in gene_set_anno_names:
+				tmp = np.where(np.asarray(data) == gene_set_anno_name)[0]
+				if len(tmp) != 1:
+					print('assumption eroror: gene set ' + gene_set_anno_name + ' not found in ' + gene_set_anno_file)
+					pdb.set_trace()
+				gene_set_column_indices[gene_set_anno_name] = tmp[0]
+				gene_set_membership[gene_set_anno_name] = set()
+			continue
+
+		for gene_set_anno_name in gene_set_anno_names:
+			gene_set_column_index = gene_set_column_indices[gene_set_anno_name]
+			if gene_set_column_index >= len(data):
+				continue
+			gene_id = data[gene_set_column_index].strip()
+			if gene_id != '':
+				# Strip any ensembl version suffix so membership matches the borzoi effect file gene ids
+				gene_set_membership[gene_set_anno_name].add(gene_id.split('.')[0])
+	f.close()
+
+	for gene_set_anno_name in gene_set_anno_names:
+		print(str(len(gene_set_membership[gene_set_anno_name])) + ' genes in gene set ' + gene_set_anno_name)
+	return gene_set_membership
+
+
 def extract_info_on_each_variant_gene_pair(eqtl_sumstats_file):
 	dicti = {}
 
@@ -324,7 +390,7 @@ def extract_info_on_each_variant_gene_pair(eqtl_sumstats_file):
 	return dicti
 
 
-def create_annotation_file(borzoi_effect_file, borzoi_annotation_file, anno_configs, vg_pair_info, variant_to_sldsc_index, sldsc_anno_mat):
+def create_annotation_file(borzoi_effect_file, borzoi_annotation_file, anno_configs, vg_pair_info, variant_to_sldsc_index, sldsc_anno_mat, gene_set_membership):
 	# One column per annotation, holding the index of the category the variant-gene pair falls in.
 	# -1 means the variant-gene pair falls in no category of that annotation.
 	anno_names = []
@@ -349,7 +415,7 @@ def create_annotation_file(borzoi_effect_file, borzoi_annotation_file, anno_conf
 
 		category_indices = []
 		for anno_config in anno_configs:
-			category_index = extract_category_index(anno_config, data, vg_pair_info, variant_to_sldsc_index, sldsc_anno_mat)
+			category_index = extract_category_index(anno_config, data, vg_pair_info, variant_to_sldsc_index, sldsc_anno_mat, gene_set_membership)
 			if category_index == -1:
 				anno_config['missing_count'] = anno_config['missing_count'] + 1
 			else:
@@ -401,6 +467,7 @@ parser.add_argument('--annotation-name-file', dest='annotation_name_file', requi
 parser.add_argument('--borzoi-annotation-file', dest='borzoi_annotation_file', required=True, help='Output variant-gene annotation file. The (annotation, category) file is written alongside it.')
 parser.add_argument('--eqtl-sumstats-file', dest='eqtl_sumstats_file', required=True, help='eQTL summary statistics file (source of MAF and TSS distance).')
 parser.add_argument('--baselineLD-anno-dir', dest='baselineLD_anno_dir', required=True, help='Directory containing the baselineLD annotation files (used for s-ldsc annotations).')
+parser.add_argument('--gene-set-anno-file', dest='gene_set_anno_file', required=True, help='File containing names (ensamble ids) of genes in each gene set (used for s-ldsc annotations).')
 parser.add_argument('--stratify-by-borzoi-magnitude', dest='stratify_by_borzoi_magnitude', type=str2bool, default=False, help='If True, further stratify every annotation by borzoi magnitude bin (True/False).')
 args = parser.parse_args()
 
@@ -409,18 +476,19 @@ annotation_name_file = args.annotation_name_file
 borzoi_annotation_file = args.borzoi_annotation_file
 eqtl_sumstats_file = args.eqtl_sumstats_file
 baselineLD_anno_dir = args.baselineLD_anno_dir
+gene_set_anno_file = args.gene_set_anno_file
 # If True, every annotation is further stratified by borzoi magnitude bin
 stratify_by_borzoi_magnitude = args.stratify_by_borzoi_magnitude
+
 
 # Describes the (annotation, category) pairs making up the annotation file
 annotation_category_file = borzoi_annotation_file.split('.txt.gz')[0] + '_categories.txt'
 
-
 # Extract the annotations we want to include
 anno_names, anno_sources = extract_annotation_names_and_sources(annotation_name_file)
-anno_configs, sldsc_anno_names = create_annotation_configs(anno_names, anno_sources, stratify_by_borzoi_magnitude)
+anno_configs, sldsc_anno_names, gene_set_anno_names = create_annotation_configs(anno_names, anno_sources, stratify_by_borzoi_magnitude)
 
-print(str(len(anno_configs)) + ' annotations (' + str(len(sldsc_anno_names)) + ' of them from s-ldsc)')
+print(str(len(anno_configs)) + ' annotations (' + str(len(sldsc_anno_names)) + ' of them from s-ldsc, ' + str(len(gene_set_anno_names)) + ' of them gene sets)')
 if stratify_by_borzoi_magnitude:
 	print('Annotations stratified by ' + str(len(borzoi_magnitude_stratification_bins)-1) + ' borzoi magnitude bins')
 
@@ -432,8 +500,11 @@ vg_pair_info = extract_info_on_each_variant_gene_pair(eqtl_sumstats_file)
 # Create mapping from variant to each of its s-ldsc annotations
 variant_to_sldsc_index, sldsc_anno_mat = create_mapping_from_variant_to_sldsc_annos(baselineLD_anno_dir, sldsc_anno_names)
 
+# Create mapping from each gene set to its member genes
+gene_set_membership = create_mapping_from_gene_set_to_genes(gene_set_anno_file, gene_set_anno_names)
+
 # Print annotation file
-create_annotation_file(borzoi_effect_file, borzoi_annotation_file, anno_configs, vg_pair_info, variant_to_sldsc_index, sldsc_anno_mat)
+create_annotation_file(borzoi_effect_file, borzoi_annotation_file, anno_configs, vg_pair_info, variant_to_sldsc_index, sldsc_anno_mat, gene_set_membership)
 
 # Print (annotation, category) pair file
 create_annotation_category_file(annotation_category_file, anno_configs)

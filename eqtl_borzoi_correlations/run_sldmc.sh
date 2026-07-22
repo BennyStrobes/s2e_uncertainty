@@ -18,8 +18,9 @@ source ~/.bashrc
 conda activate plink_env
 
 date
+echo $ld_corr_output_stem
 
-python run_ld_corr.py \
+python run_sldmc.py \
 	--est-borzoi-effect-size-file $borzoi_effect_file \
 	--est-eqtl-effect-size-file $eqtl_effects_file \
 	--sim-variant-gene-annotation-file $borzoi_annotation_file \
@@ -31,33 +32,3 @@ python run_ld_corr.py \
 
 
 date
-
-
-
-
-##############
-# OLD
-###############
-if false; then
-# Without cross-tissue shared bootstraps
-python run_ld_corr.py \
-	--est-borzoi-effect-size-file $borzoi_effect_file \
-	--est-eqtl-effect-size-file $eqtl_effects_file \
-	--sim-variant-gene-annotation-file $borzoi_annotation_file \
-	--genotype-plink-filestem $genotype_stem \
-	--genotype-sample-mapping-file $genotype_sample_mapping_file \
-	--ld-corr-output-stem $ld_corr_output_stem"_local_bs" \
-    --weighted "True"
-fi
-
-
-
-
-
-###############################
-# Old. not currently used
-###############################
-
-if false; then
-python run_ld_corr_HE.py $borzoi_effect_file $eqtl_effects_file $borzoi_annotation_file $genotype_stem $genotype_sample_mapping_file $ld_corr_output_stem
-fi
