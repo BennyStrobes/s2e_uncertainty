@@ -150,26 +150,60 @@ fi
 #################
 # 6. Meta-analyze ld-corr results across tissues
 #################
-# a. create file with list of all output files (one list per annotation version)
 if false; then
+# a. create file with list of all output files (one list per annotation version)
 for annotation_version in $annotation_versions; do
 	ld_corr_output_file_list=${ld_corr_results_output_dir}"ld_corr_per_tissue_output_file_list_"${annotation_version}".txt"
 	> "$ld_corr_output_file_list"
 	tail -n +2 "$borzoi_gtex_unique_target_names_file" | while IFS=$'\t' read -r orig_target_index borzoi_target_index target_sample target_description target_tissue; do
-		ld_corr_output_file=${ld_corr_results_output_dir}"ld_corr_results_"${target_tissue}"_"${target_sample}"_"${annotation_version}"_global_bs_bootstrap_summary.txt"
+		ld_corr_output_file=${ld_corr_results_output_dir}"ld_corr_results_"${target_tissue}"_"${target_sample}"_"${annotation_version}"_bootstrap_summary.txt"
 		echo "$ld_corr_output_file" >> "$ld_corr_output_file_list"
 	done
 done
 fi
 
+
 # b. Meta-analyze LD-corr results across tissues
 if false; then
 for annotation_version in $annotation_versions; do
 	ld_corr_output_file_list=${ld_corr_results_output_dir}"ld_corr_per_tissue_output_file_list_"${annotation_version}".txt"
-	meta_analyzed_ld_corr_output_stem=${ld_corr_results_output_dir}"ld_corr_results_cross_tissue_meta_analyzed_"${annotation_version}"_global_bs"
+	meta_analyzed_ld_corr_output_stem=${ld_corr_results_output_dir}"ld_corr_results_cross_tissue_meta_analyzed_"${annotation_version}
 	sh meta_analyze_ld_corr_results.sh $ld_corr_output_file_list $meta_analyzed_ld_corr_output_stem
 done
 fi
+
+
+# c. Difference each cell from the intercept (per-tissue and cross-tissue meta-analyzed).
+# Run separately per annotation version: the default version differences against a single global
+# intercept, the magnitude_stratified version against the per-magnitude-bin intercept.
+if false; then
+for annotation_version in $annotation_versions; do
+	ld_corr_output_file_list=${ld_corr_results_output_dir}"ld_corr_per_tissue_output_file_list_"${annotation_version}".txt"
+	intercept_diff_output_stem=${ld_corr_results_output_dir}"ld_corr_results_cross_tissue_meta_analyzed_"${annotation_version}
+	sh compute_intercept_differences.sh $ld_corr_output_file_list $intercept_diff_output_stem $annotation_version
+done
+fi
+
+
+
+#################
+# 7. Visualize results
+#################
+if false; then
+source ~/.bashrc
+conda activate plink_env
+fi
+Rscript visualize_sldmc_results.R ${ld_corr_results_output_dir} $simulation_results_dir $borzoi_gtex_unique_target_names_file $visualize_ld_corr_results_dir
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -t 0-5:00                         # Runtime in D-HH:MM format
+#SBATCH -t 0-4:00                         # Runtime in D-HH:MM format
 #SBATCH -p bch-compute                        # Partition to run in
 #SBATCH --mem=40GB 
 
@@ -25,13 +25,19 @@ python run_ld_corr.py \
 	--sim-variant-gene-annotation-file $borzoi_annotation_file \
 	--genotype-plink-filestem $genotype_stem \
 	--genotype-sample-mapping-file $genotype_sample_mapping_file \
-	--ld-corr-output-stem $ld_corr_output_stem"_global_bs" \
+	--ld-corr-output-stem $ld_corr_output_stem \
 	--bootstrapped-gene-set-filestem ${bootstrapped_cross_tissue_gene_sets_file_stem} \
     --weighted "True"
 
 
 date
 
+
+
+
+##############
+# OLD
+###############
 if false; then
 # Without cross-tissue shared bootstraps
 python run_ld_corr.py \
