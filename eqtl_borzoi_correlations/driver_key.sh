@@ -151,11 +151,12 @@ tail -n +2 "$borzoi_gtex_unique_target_names_file" | while IFS=$'\t' read -r ori
 done
 fi
 
+
 #################
 # 6. Meta-analyze ld-corr results across tissues
 #################
-if false; then
 # a. create file with list of all output files (one list per annotation version)
+if false; then
 for annotation_version in $annotation_versions; do
 	sldmc_output_file_list=${sldmc_results_output_dir}"sldmc_per_tissue_output_file_list_"${annotation_version}".txt"
 	> "$sldmc_output_file_list"
@@ -165,6 +166,7 @@ for annotation_version in $annotation_versions; do
 	done
 done
 fi
+
 
 
 # b. Meta-analyze LD-corr results across tissues
@@ -197,7 +199,8 @@ if false; then
 source ~/.bashrc
 conda activate plink_env
 
-Rscript visualize_sldmc_results.R ${ld_corr_results_output_dir} $simulation_results_dir $borzoi_gtex_unique_target_names_file $visualize_ld_corr_results_dir
+
+Rscript visualize_sldmc_results.R ${sldmc_results_output_dir} $simulation_results_dir $borzoi_gtex_unique_target_names_file $visualize_ld_corr_results_dir $annotation_name_file
 fi
 
 

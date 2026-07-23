@@ -217,6 +217,34 @@ make_per_tissue_magnitude_dot_plot <- function(df, value_col, ylab, point_color)
 }
 
 
+subset_diff_by_source <- function(diff_df, anno_to_source, target_source) {
+	# Keep only the diff-stats rows whose annotation is of a given source (sldsc / gene_set). The
+	# diff file has no source column, so source is looked up by (base) annotation name in anno_to_source.
+	# Magnitude-stratified names carry a prefix, so strip it before the lookup.
+	base_names = sub("^borzoi_magnitude_stratifiedX", "", diff_df$annotation_name)
+	row_sources = anno_to_source[base_names]
+	keep = !is.na(row_sources) & row_sources == target_source
+	return(diff_df[keep, ])
+}
+
+
+save_source_forest_plot <- function(diff_df, anno_to_source, target_source, excluded_annotation_regex, present_category, output_file) {
+	# Build and save a forest plot for a single annotation source, with its own (independent) FDR.
+	subset_df = subset_diff_by_source(diff_df, anno_to_source, target_source)
+	present_rows = subset_df$category_name == present_category
+	base_names = sub("^borzoi_magnitude_stratifiedX", "", subset_df$annotation_name)
+	excluded = grepl(excluded_annotation_regex, base_names, ignore.case=TRUE)
+	n_annotations = length(unique(subset_df$annotation_name[present_rows & (excluded == FALSE)]))
+	if (n_annotations == 0) {
+		print(paste("WARNING: no", target_source, "annotations to plot; skipping", output_file))
+		return(invisible(NULL))
+	}
+	forest_plot = make_sldsc_annotation_forest_plot(subset_df, excluded_annotation_regex, present_category)
+	ggsave(output_file, forest_plot, width=7.6, height=max(4, 0.22*n_annotations + 1.4))
+	print(output_file)
+}
+
+
 make_sldsc_annotation_forest_plot <- function(diff_df, excluded_annotation_regex, present_category="present") {
 	# Two-panel forest plot of the S-LDSC (binary) annotations, showing each annotation's difference
 	# from the intercept for correlation (left) and calibration slope (right). Binary annotations are
@@ -225,9 +253,12 @@ make_sldsc_annotation_forest_plot <- function(diff_df, excluded_annotation_regex
 	# the default file, or "magnitude_bin<m>Xpresent" for the magnitude-stratified file (i.e. the
 	# difference conditional on being in magnitude bin <m>). Points are colored by BH-FDR significance.
 	present_df = diff_df[diff_df$category_name == present_category & diff_df$output_name %in% c("correlation", "calibration_slope"), ]
-	present_df = present_df[grepl(excluded_annotation_regex, present_df$annotation_name, ignore.case=TRUE) == FALSE, ]
+	# Exclusions match on the base annotation name (magnitude-stratified names carry a prefix), so
+	# anchored patterns like "^MohammadiVg" work in both the default and magnitude-stratified files.
+	present_base_names = sub("^borzoi_magnitude_stratifiedX", "", present_df$annotation_name)
+	present_df = present_df[grepl(excluded_annotation_regex, present_base_names, ignore.case=TRUE) == FALSE, ]
 	if (nrow(present_df) == 0) {
-		stop("No S-LDSC annotation present-cell rows found for the forest plot")
+		stop("No annotation present-cell rows found for the forest plot")
 	}
 
 	# Gaussian CI on the difference, and BH-FDR significance within each metric
@@ -283,9 +314,15 @@ sldmc_results_output_dir = args[1]
 simulation_results_dir = args[2]
 tissue_names_file = args[3]
 visualization_dir = args[4]
+annotation_name_file = args[5]
 
 # Load in tissue info df
 tissue_info_df = read.table(tissue_names_file, header=TRUE, sep="\t")
+
+# Map each annotation to its source (sldsc / gene_set / custom) so the forest plots can be split by
+# source. The annotation list is (anno_name, source); the diff-stats file itself has no source column.
+annotation_source_df = read.table(annotation_name_file, header=TRUE, sep="\t", stringsAsFactors=FALSE)
+anno_to_source = setNames(as.character(annotation_source_df[[2]]), as.character(annotation_source_df[[1]]))
 
 
 # Load in meta-analyzed, default S-LDMC results file
@@ -314,29 +351,26 @@ ggsave(per_tissue_magnitude_calibration_output_file, per_tissue_magnitude_calibr
 
 
 ########################
-# S-LDSC annotation forest plot (difference from intercept), excluding flanking and allele-frequency annotations
+# Annotation forest plots (difference from intercept): separate plots per source, each with its own FDR
 ########################
+# S-LDSC plot drops flanking / allele-frequency annotations; gene-set plot drops MohammadiVg and FinucaneSEG sets
 excluded_sldsc_annotation_regex = "flanking|MAF|allele"
+excluded_gene_set_annotation_regex = "^MohammadiVg|^FinucaneSEG"
 
-sldsc_annotation_forest_plot = make_sldsc_annotation_forest_plot(sldmc_default_diff_df, excluded_sldsc_annotation_regex)
-n_sldsc_annotations = length(unique(sldmc_default_diff_df$annotation_name[sldmc_default_diff_df$category_name == "present" & grepl(excluded_sldsc_annotation_regex, sldmc_default_diff_df$annotation_name, ignore.case=TRUE) == FALSE]))
-sldsc_annotation_forest_output_file = paste0(visualization_dir, "sldmc_sldsc_annotation_forest.pdf")
-ggsave(sldsc_annotation_forest_output_file, sldsc_annotation_forest_plot, width=7.6, height=max(4, 0.22*n_sldsc_annotations + 1.4))
+save_source_forest_plot(sldmc_default_diff_df, anno_to_source, "sldsc", excluded_sldsc_annotation_regex, "present", paste0(visualization_dir, "sldmc_sldsc_annotation_forest.pdf"))
+save_source_forest_plot(sldmc_default_diff_df, anno_to_source, "gene_set", excluded_gene_set_annotation_regex, "present", paste0(visualization_dir, "sldmc_gene_set_annotation_forest.pdf"))
 
 
 ########################
-# S-LDSC annotation forest plot conditional on being in the 3rd borzoi magnitude bin (stratified data)
+# Annotation forest plots conditional on borzoi magnitude bin (stratified data): separate plots per source
 ########################
 # Load in meta-analyzed, magnitude-stratified S-LDMC difference-from-intercept results file
 sldmc_magnitude_stratified_diff_df = read.table(paste0(sldmc_results_output_dir, "sldmc_results_cross_tissue_meta_analyzed_magnitude_stratified_intercept_diff_stats.txt"), header=TRUE, sep="\t")
 
 for (magnitude_bin_index in 0:4) {
-stratified_present_category = paste0("magnitude_bin", magnitude_bin_index, "Xpresent")
-
-sldsc_annotation_forest_stratified_plot = make_sldsc_annotation_forest_plot(sldmc_magnitude_stratified_diff_df, excluded_sldsc_annotation_regex, stratified_present_category)
-n_sldsc_annotations_stratified = length(unique(sldmc_magnitude_stratified_diff_df$annotation_name[sldmc_magnitude_stratified_diff_df$category_name == stratified_present_category & grepl(excluded_sldsc_annotation_regex, sldmc_magnitude_stratified_diff_df$annotation_name, ignore.case=TRUE) == FALSE]))
-sldsc_annotation_forest_stratified_output_file = paste0(visualization_dir, "sldmc_sldsc_annotation_forest_magnitude_bin", magnitude_bin_index, ".pdf")
-ggsave(sldsc_annotation_forest_stratified_output_file, sldsc_annotation_forest_stratified_plot, width=7.6, height=max(4, 0.22*n_sldsc_annotations_stratified + 1.4))
+	stratified_present_category = paste0("magnitude_bin", magnitude_bin_index, "Xpresent")
+	save_source_forest_plot(sldmc_magnitude_stratified_diff_df, anno_to_source, "sldsc", excluded_sldsc_annotation_regex, stratified_present_category, paste0(visualization_dir, "sldmc_sldsc_annotation_forest_magnitude_bin", magnitude_bin_index, ".pdf"))
+	save_source_forest_plot(sldmc_magnitude_stratified_diff_df, anno_to_source, "gene_set", excluded_gene_set_annotation_regex, stratified_present_category, paste0(visualization_dir, "sldmc_gene_set_annotation_forest_magnitude_bin", magnitude_bin_index, ".pdf"))
 }
 
 
