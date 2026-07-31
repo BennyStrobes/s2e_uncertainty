@@ -84,11 +84,7 @@ for line in f:
 
 	tot_variants_in_gene = len(cis_variants)
 
-	if tot_variants_in_gene < 20:
-		# HACKY FIX (Doesn't occur too much)
-		causal_variant_to_gene_effect_sizes = simulate_causal_effect_sizes(tot_variants_in_gene, np.arange(2,5), cis_snp_h2s)
-	else:
-		causal_variant_to_gene_effect_sizes = simulate_causal_effect_sizes(tot_variants_in_gene, np.arange(2,5), cis_snp_h2s)
+	causal_variant_to_gene_effect_sizes = simulate_causal_effect_sizes(tot_variants_in_gene, np.arange(2,5), cis_snp_h2s)
 	
 	for var_iter, variant_name in enumerate(cis_variants):
 		t.write(gene_id + '\t' + variant_name + '\t' + cis_chroms[var_iter] + '\t' + cis_poss[var_iter] + '\t' + cis_variant_a0s[var_iter] + '\t' + cis_variant_a1s[var_iter] + '\t' + str(causal_variant_to_gene_effect_sizes[var_iter]) + '\n')

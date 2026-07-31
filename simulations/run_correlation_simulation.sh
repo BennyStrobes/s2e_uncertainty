@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -t 0-1:30                         # Runtime in D-HH:MM format
+#SBATCH -t 0-30:30                         # Runtime in D-HH:MM format
 #SBATCH -p bch-compute                          # Partition to run in
 #SBATCH --mem=20GB  
 
@@ -28,6 +28,7 @@ if false; then
 python simulate_causal_variant_gene_effect_size.py $simulation_iter $gene_ld_summary_file $causal_variant_gene_effect_size_file
 fi
 
+
 ####################################################
 # Part 2: Simulate estimated borzoi (standardized effect) sizes
 ####################################################
@@ -35,8 +36,11 @@ echo "PART 2"
 n_anno="6"
 est_borzoi_effect_size_file=${est_borzoi_effect_size_dir}"sim"${simulation_iter}"_est_borzoi_effects_"${n_anno}"_anno.txt.gz"
 sim_variant_gene_annotation_file=${est_borzoi_effect_size_dir}"sim"${simulation_iter}"_sim_variant_gene_annotations_"${n_anno}"_annotations.txt.gz"
+# SLDMC derives the category file name from the annotation file name, so these two must stay paired
+sldmc_variant_gene_annotation_file=${est_borzoi_effect_size_dir}"sim"${simulation_iter}"_sim_variant_gene_annotations_"${n_anno}"_annotations_sldmc.txt.gz"
+sldmc_annotation_category_file=${est_borzoi_effect_size_dir}"sim"${simulation_iter}"_sim_variant_gene_annotations_"${n_anno}"_annotations_sldmc_categories.txt"
 if false; then
-python simulate_est_borzoi_effects_for_correlation_experiment.py $causal_variant_gene_effect_size_file $est_borzoi_effect_size_file ${simulation_iter} $sim_variant_gene_annotation_file $n_anno
+python simulate_est_borzoi_effects_for_correlation_experiment.py $causal_variant_gene_effect_size_file $est_borzoi_effect_size_file ${simulation_iter} $sim_variant_gene_annotation_file $n_anno $sldmc_variant_gene_annotation_file $sldmc_annotation_category_file
 fi
 
 ####################################################
@@ -56,11 +60,10 @@ eqtl_sample_size="489"
 est_eqtl_effect_size_file=${est_eqtl_effect_size_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_est_eqtl_effects.txt.gz"
 ind_expr_file=${est_eqtl_effect_size_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_individual_expression.txt.gz"
 susie_fine_mapping_file=${est_eqtl_effect_size_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_susie_fine_mapping.txt.gz"
-if false; then
 source ~/.bashrc
 conda activate susie
 python simulate_eqtl_analysis.py $causal_variant_gene_effect_size_file $est_eqtl_effect_size_file $gene_ld_summary_file $onek_genomes_plink_filestem $eqtl_sample_size $simulation_iter $ind_expr_file $susie_fine_mapping_file
-fi
+
 
 
 
@@ -79,14 +82,15 @@ fi
 ####################################################
 # Part 5: Run correlations based on only fine-mapped snps
 ####################################################
+if false; then
 source ~/.bashrc
 conda activate plink_env
 echo "PART 5"
 fm_corr_output_stem=${inf_output_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_"${n_anno}"_anno_fm_corr_results"
 python run_fine_map_corr.py $est_borzoi_effect_size_file $susie_fine_mapping_file $sim_variant_gene_annotation_file $onek_genomes_plink_filestem $fm_corr_output_stem
+fi
 
 
 
 
-
-
+date

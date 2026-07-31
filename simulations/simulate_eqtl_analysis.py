@@ -279,10 +279,10 @@ for chrom_num in range(1,23):
 			continue
 		gene_cis_variant_file = data[4]
 		n_cis_variants = int(data[3])
-		if n_cis_variants < 11:
+		if n_cis_variants < 10:
 			continue
 		cis_variant_names = load_in_cis_variants(gene_cis_variant_file)
-
+		print(gene_name)
 		# Extract variant indices corresponding to cis_variant names
 		cis_variant_indices = []
 		cis_variant_a0s = []

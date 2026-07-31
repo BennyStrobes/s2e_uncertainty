@@ -79,12 +79,18 @@ for chrom_num in range(1,23):
 		gene_tss = gene_info[2]
 
 		cis_var_indices = np.abs(variant_positions - gene_tss) < 100000
+		n_cis_variants = np.sum(cis_var_indices)
+
+		# Downstream inference requires a minimum number of cis variants per gene
+		if n_cis_variants < 10:
+			continue
+
 		cis_var_info = variant_names[cis_var_indices, :]
 
 		cis_var_bim_file = gene_info_dir + gene_name + '_cis_variant_bim_file.txt'
 		create_cis_var_bim_file(cis_var_bim_file, cis_var_info)
-	
-		t.write(gene_name + '\t' + 'chr' + str(chrom_num) + '\t' + str(gene_tss) + '\t' + str(np.sum(cis_var_indices)) + '\t' + cis_var_bim_file + '\n')
+
+		t.write(gene_name + '\t' + 'chr' + str(chrom_num) + '\t' + str(gene_tss) + '\t' + str(n_cis_variants) + '\t' + cis_var_bim_file + '\n')
 
 t.close()
 
