@@ -570,17 +570,6 @@ del gene_id_to_variant_gene_anno
 del gene_id_to_est_borzoi_effects
 del gene_id_to_est_borzoi_effects_unstandardized
 
-'''
-# TO DELETE
-pickle_file = ld_corr_output_stem + '.pkl'
-with open(pickle_file, 'wb') as f:
-	pickle.dump(gene_id_to_ld_means, f)
-
-pickle_file = ld_corr_output_stem + '.pkl'
-with open(pickle_file, 'rb') as f:
-	gene_id_to_ld_means = pickle.load(f)
-'''
-
 
 ##############################
 # Run regressions
