@@ -12,8 +12,8 @@ onek_genomes_plink_filestem="/lab-share/CHIP-Strober-e2/Public/1000G_Phase3/hg38
 # Gene annotation file
 gene_annotation_file="/lab-share/CHIP-Strober-e2/Public/gene_annotation_files/gencode.v39.gtex.protein_coding.genes.gtf"
 
-
-
+# Code directory for SLDMC
+sldmc_code_dir="/lab-share/CHIP-Strober-e2/Public/ben/SLDMC/"
 
 ######################
 # Output data
@@ -57,13 +57,14 @@ fi
 if false; then
 for simulation_iter in {1..50}
 do
-	sbatch run_correlation_simulation.sh $simulation_iter $gene_summary_file $correlation_causal_effect_dir $correlation_est_eqtl_effects_dir $correlation_borzoi_est_effect_dir $onek_genomes_plink_filestem $correlation_inference_results_dir
+	sbatch run_correlation_simulation.sh $simulation_iter $gene_summary_file $correlation_causal_effect_dir $correlation_est_eqtl_effects_dir $correlation_borzoi_est_effect_dir $onek_genomes_plink_filestem $correlation_inference_results_dir $sldmc_code_dir
 done
 fi
 
-if false; then
+
 simulation_iter="1"
-sbatch run_correlation_simulation.sh $simulation_iter $gene_summary_file $correlation_causal_effect_dir $correlation_est_eqtl_effects_dir $correlation_borzoi_est_effect_dir $onek_genomes_plink_filestem $correlation_inference_results_dir
+if false; then
+sbatch run_correlation_simulation.sh $simulation_iter $gene_summary_file $correlation_causal_effect_dir $correlation_est_eqtl_effects_dir $correlation_borzoi_est_effect_dir $onek_genomes_plink_filestem $correlation_inference_results_dir $sldmc_code_dir
 fi
 
 

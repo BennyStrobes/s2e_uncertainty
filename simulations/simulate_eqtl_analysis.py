@@ -212,6 +212,7 @@ eqtl_sample_size = int(sys.argv[5])
 simulation_iter = int(sys.argv[6])
 individual_expression_file = sys.argv[7]
 susie_fine_mapping_file = sys.argv[8] if len(sys.argv) > 8 else None
+genotype_sample_mapping_file = sys.argv[9] if len(sys.argv) > 9 else None
 susie_r_script = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'run_susie_fine_mapping.R')
 
 
@@ -226,10 +227,15 @@ gene_id_to_causal_effects = create_mapping_from_gene_id_to_causal_effects(causal
 # Get sample indices
 sample_indices = np.arange(eqtl_sample_size)
 
+# Record which genotype samples make up the eqtl sample, so downstream tools (eg SLDMC) compute
+# LD from the same individuals. One 0-based .fam index per line, no header.
+if genotype_sample_mapping_file is not None:
+	np.savetxt(genotype_sample_mapping_file, sample_indices, fmt='%d')
+
 
 # Open output file handle
 t = gzip.open(est_eqtl_effect_size_file, 'wt')
-t.write('gene\tvariant\tchr\tsnp_pos\tA0\tA1\teqtl_effect_size\teqtl_effect_size_se\tN\n')
+t.write('gene\tvariant\tchr\tsnp_pos\tA0\tA1\teqtl_effect_size\teqtl_effect_size_se\tN\tmaf\n')
 
 # Open output file handle
 t_indi = gzip.open(individual_expression_file, 'wt')
@@ -307,6 +313,11 @@ for chrom_num in range(1,23):
 		geno_mat = geno_mat[:, sample_indices]
 		n_samp = geno_mat.shape[1]
 
+		# Allele frequency within the eqtl sample, so it matches the genotype scale the
+		# marginal effect sizes below are estimated on
+		allele_freqs = np.mean(geno_mat, axis=1)/2.0
+		mafs = np.minimum(allele_freqs, 1.0 - allele_freqs)
+
 		# Standardize genotype matrix
 		std_geno_mat = standardize_geno(geno_mat)
 
@@ -350,7 +361,7 @@ for chrom_num in range(1,23):
 
 		# Print to output file
 		for var_iter, variant_id in enumerate(cis_variant_names):
-			t.write(gene_name + '\t' + variant_id + '\t' + str(cis_variant_chroms[var_iter]) + '\t' + str(cis_variant_poss[var_iter]) + '\t' + cis_variant_a0s[var_iter] + '\t' + cis_variant_a1s[var_iter] + '\t' + str(eqtl_beta[var_iter]) + '\t' + str(eqtl_beta_se[var_iter]) + '\t' + str(n_samp) + '\n')
+			t.write(gene_name + '\t' + variant_id + '\t' + str(cis_variant_chroms[var_iter]) + '\t' + str(cis_variant_poss[var_iter]) + '\t' + cis_variant_a0s[var_iter] + '\t' + cis_variant_a1s[var_iter] + '\t' + str(eqtl_beta[var_iter]) + '\t' + str(eqtl_beta_se[var_iter]) + '\t' + str(n_samp) + '\t' + str(mafs[var_iter]) + '\n')
 
 		# Print to individual output file
 		for indi_iter, indi_expr in enumerate(gene_expression):

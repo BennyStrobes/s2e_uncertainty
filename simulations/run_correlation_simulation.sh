@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -t 0-30:30                         # Runtime in D-HH:MM format
+#SBATCH -t 0-20:30                         # Runtime in D-HH:MM format
 #SBATCH -p bch-compute                          # Partition to run in
 #SBATCH --mem=20GB  
 
@@ -12,6 +12,7 @@ est_eqtl_effect_size_dir="${4}"
 est_borzoi_effect_size_dir="${5}"
 onek_genomes_plink_filestem="${6}"
 inf_output_dir="${7}"
+sldmc_code_dir="${8}"
 
 echo "Simulation "${simulation_iter}
 source ~/.bashrc
@@ -60,9 +61,10 @@ eqtl_sample_size="489"
 est_eqtl_effect_size_file=${est_eqtl_effect_size_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_est_eqtl_effects.txt.gz"
 ind_expr_file=${est_eqtl_effect_size_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_individual_expression.txt.gz"
 susie_fine_mapping_file=${est_eqtl_effect_size_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_susie_fine_mapping.txt.gz"
+genotype_sample_mapping_file=${est_eqtl_effect_size_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_genotype_sample_mapping.txt"
 source ~/.bashrc
 conda activate susie
-python simulate_eqtl_analysis.py $causal_variant_gene_effect_size_file $est_eqtl_effect_size_file $gene_ld_summary_file $onek_genomes_plink_filestem $eqtl_sample_size $simulation_iter $ind_expr_file $susie_fine_mapping_file
+python simulate_eqtl_analysis.py $causal_variant_gene_effect_size_file $est_eqtl_effect_size_file $gene_ld_summary_file $onek_genomes_plink_filestem $eqtl_sample_size $simulation_iter $ind_expr_file $susie_fine_mapping_file $genotype_sample_mapping_file
 
 
 
@@ -71,6 +73,23 @@ python simulate_eqtl_analysis.py $causal_variant_gene_effect_size_file $est_eqtl
 # Part 4: Run LD corr inference
 ####################################################
 if false; then
+echo "PART 4"
+# Updated code
+source ~/.bashrc
+conda activate sldmc
+ld_corr_output_stem=${inf_output_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_"${n_anno}"_anno_ld_corr_results"
+python ${sldmc_code_dir}sldmc.py \
+    --est-borzoi-effect-size-file $est_borzoi_effect_size_file \
+    --est-eqtl-effect-size-file $est_eqtl_effect_size_file \
+    --sim-variant-gene-annotation-file $sldmc_variant_gene_annotation_file \
+    --genotype-plink-filestem $onek_genomes_plink_filestem \
+    --genotype-sample-mapping-file $genotype_sample_mapping_file \
+    --ld-corr-output-stem $ld_corr_output_stem 
+fi
+
+
+if false; then
+# OLD Version of this
 source ~/.bashrc
 conda activate plink_env
 echo "PART 4"
