@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH -t 0-20:30                         # Runtime in D-HH:MM format
+#SBATCH -t 0-10:30                         # Runtime in D-HH:MM format
 #SBATCH -p bch-compute                          # Partition to run in
 #SBATCH --mem=20GB  
 
-
+# was 20 hours
 
 simulation_iter="${1}"
 gene_ld_summary_file="${2}"
@@ -62,17 +62,17 @@ est_eqtl_effect_size_file=${est_eqtl_effect_size_dir}"sim"${simulation_iter}"_si
 ind_expr_file=${est_eqtl_effect_size_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_individual_expression.txt.gz"
 susie_fine_mapping_file=${est_eqtl_effect_size_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_susie_fine_mapping.txt.gz"
 genotype_sample_mapping_file=${est_eqtl_effect_size_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_genotype_sample_mapping.txt"
+if false; then
 source ~/.bashrc
 conda activate susie
 python simulate_eqtl_analysis.py $causal_variant_gene_effect_size_file $est_eqtl_effect_size_file $gene_ld_summary_file $onek_genomes_plink_filestem $eqtl_sample_size $simulation_iter $ind_expr_file $susie_fine_mapping_file $genotype_sample_mapping_file
-
+fi
 
 
 
 ####################################################
 # Part 4: Run LD corr inference
 ####################################################
-if false; then
 echo "PART 4"
 # Updated code
 source ~/.bashrc
@@ -85,31 +85,31 @@ python ${sldmc_code_dir}sldmc.py \
     --genotype-plink-filestem $onek_genomes_plink_filestem \
     --genotype-sample-mapping-file $genotype_sample_mapping_file \
     --ld-corr-output-stem $ld_corr_output_stem 
-fi
+
+
+
+####################################################
+# Part 5: Run correlations based on only fine-mapped snps
+####################################################
+source ~/.bashrc
+conda activate plink_env
+echo "PART 5"
+fm_corr_output_stem=${inf_output_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_"${n_anno}"_anno_fm_corr_results"
+python run_fine_map_corr.py $est_borzoi_effect_size_file $susie_fine_mapping_file $sim_variant_gene_annotation_file $onek_genomes_plink_filestem $fm_corr_output_stem
+
+
+
+
+
+date
+
 
 
 if false; then
-# OLD Version of this
+# OLD Version of part 4
 source ~/.bashrc
 conda activate plink_env
 echo "PART 4"
 ld_corr_output_stem=${inf_output_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_"${n_anno}"_anno_ld_corr_results"
 python run_ld_corr.py $est_borzoi_effect_size_file $est_eqtl_effect_size_file $sim_variant_gene_annotation_file $onek_genomes_plink_filestem $ld_corr_output_stem
 fi
-
-
-####################################################
-# Part 5: Run correlations based on only fine-mapped snps
-####################################################
-if false; then
-source ~/.bashrc
-conda activate plink_env
-echo "PART 5"
-fm_corr_output_stem=${inf_output_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_"${n_anno}"_anno_fm_corr_results"
-python run_fine_map_corr.py $est_borzoi_effect_size_file $susie_fine_mapping_file $sim_variant_gene_annotation_file $onek_genomes_plink_filestem $fm_corr_output_stem
-fi
-
-
-
-
-date
