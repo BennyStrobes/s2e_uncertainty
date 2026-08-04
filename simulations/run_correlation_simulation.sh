@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH -t 0-10:30                         # Runtime in D-HH:MM format
+#SBATCH -t 0-20:30                         # Runtime in D-HH:MM format
 #SBATCH -p bch-compute                          # Partition to run in
-#SBATCH --mem=20GB  
+#SBATCH --mem=40GB  
 
 # was 20 hours
 
@@ -31,17 +31,17 @@ fi
 
 
 ####################################################
-# Part 2: Simulate estimated borzoi (standardized effect) sizes
+# Part 2: Simulate estimated (standardized) borzoi sizes
 ####################################################
 echo "PART 2"
 n_anno="6"
-est_borzoi_effect_size_file=${est_borzoi_effect_size_dir}"sim"${simulation_iter}"_est_borzoi_effects_"${n_anno}"_anno.txt.gz"
+est_borzoi_standardized_effect_size_file=${est_borzoi_effect_size_dir}"sim"${simulation_iter}"_est_borzoi_standardized_effects_"${n_anno}"_anno.txt.gz"
 sim_variant_gene_annotation_file=${est_borzoi_effect_size_dir}"sim"${simulation_iter}"_sim_variant_gene_annotations_"${n_anno}"_annotations.txt.gz"
 # SLDMC derives the category file name from the annotation file name, so these two must stay paired
 sldmc_variant_gene_annotation_file=${est_borzoi_effect_size_dir}"sim"${simulation_iter}"_sim_variant_gene_annotations_"${n_anno}"_annotations_sldmc.txt.gz"
 sldmc_annotation_category_file=${est_borzoi_effect_size_dir}"sim"${simulation_iter}"_sim_variant_gene_annotations_"${n_anno}"_annotations_sldmc_categories.txt"
 if false; then
-python simulate_est_borzoi_effects_for_correlation_experiment.py $causal_variant_gene_effect_size_file $est_borzoi_effect_size_file ${simulation_iter} $sim_variant_gene_annotation_file $n_anno $sldmc_variant_gene_annotation_file $sldmc_annotation_category_file
+python simulate_est_borzoi_effects_for_correlation_experiment.py $causal_variant_gene_effect_size_file $est_borzoi_standardized_effect_size_file ${simulation_iter} $sim_variant_gene_annotation_file $n_anno $sldmc_variant_gene_annotation_file $sldmc_annotation_category_file
 fi
 
 ####################################################
@@ -50,8 +50,9 @@ fi
 echo "PART 2.5"
 simulation_parameter_summary_file=${est_borzoi_effect_size_dir}"sim"${simulation_iter}"_sim_variant_gene_annotations_"${n_anno}"_true_sim_effect_summary.txt"
 if false; then
-python calculate_true_simulated_calibration_effect_sizes_and_correlation.py $est_borzoi_effect_size_file $sim_variant_gene_annotation_file $causal_variant_gene_effect_size_file $simulation_parameter_summary_file
+python calculate_true_simulated_calibration_effect_sizes_and_correlation.py $est_borzoi_standardized_effect_size_file $sim_variant_gene_annotation_file $causal_variant_gene_effect_size_file $simulation_parameter_summary_file
 fi
+
 
 ####################################################
 # Part 3: Simulate estimated eqtl effect sizes
@@ -69,11 +70,25 @@ python simulate_eqtl_analysis.py $causal_variant_gene_effect_size_file $est_eqtl
 fi
 
 
-
 ####################################################
-# Part 4: Run LD corr inference
+# Part 4: Simulate estimated eqtl effect sizes
 ####################################################
 echo "PART 4"
+eqtl_sample_size="489"
+est_borzoi_effect_size_file=${est_borzoi_effect_size_dir}"sim"${simulation_iter}"_est_borzoi_effects_"${n_anno}"_anno_eqtl_ss_"${eqtl_sample_size}".txt.gz"
+
+source ~/.bashrc
+conda activate plink_env
+python convert_borzoi_standardized_effects_to_per_allele_effects.py $est_eqtl_effect_size_file $est_borzoi_standardized_effect_size_file $est_borzoi_effect_size_file
+
+
+
+
+####################################################
+# Part 5: Run LD corr inference
+####################################################
+if false; then
+echo "PART 5"
 # Updated code
 source ~/.bashrc
 conda activate sldmc
@@ -85,17 +100,19 @@ python ${sldmc_code_dir}sldmc.py \
     --genotype-plink-filestem $onek_genomes_plink_filestem \
     --genotype-sample-mapping-file $genotype_sample_mapping_file \
     --ld-corr-output-stem $ld_corr_output_stem 
-
+fi
 
 
 ####################################################
-# Part 5: Run correlations based on only fine-mapped snps
+# Part 6: Run correlations based on only fine-mapped snps
 ####################################################
+if false; then
 source ~/.bashrc
 conda activate plink_env
-echo "PART 5"
+echo "PART 6"
 fm_corr_output_stem=${inf_output_dir}"sim"${simulation_iter}"_sim_eqtl_ss_"${eqtl_sample_size}"_"${n_anno}"_anno_fm_corr_results"
 python run_fine_map_corr.py $est_borzoi_effect_size_file $susie_fine_mapping_file $sim_variant_gene_annotation_file $onek_genomes_plink_filestem $fm_corr_output_stem
+fi
 
 
 

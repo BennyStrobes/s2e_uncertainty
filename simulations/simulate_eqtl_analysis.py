@@ -224,18 +224,10 @@ np.random.seed(simulation_iter)
 gene_id_to_causal_effects = create_mapping_from_gene_id_to_causal_effects(causal_variant_gene_effect_size_file)
 
 
-# Get sample indices
-sample_indices = np.arange(eqtl_sample_size)
-
-# Record which genotype samples make up the eqtl sample, so downstream tools (eg SLDMC) compute
-# LD from the same individuals. One 0-based .fam index per line, no header.
-if genotype_sample_mapping_file is not None:
-	np.savetxt(genotype_sample_mapping_file, sample_indices, fmt='%d')
-
 
 # Open output file handle
 t = gzip.open(est_eqtl_effect_size_file, 'wt')
-t.write('gene\tvariant\tchr\tsnp_pos\tA0\tA1\teqtl_effect_size\teqtl_effect_size_se\tN\tmaf\n')
+t.write('gene\tvariant\tchr\tsnp_pos\tA0\tA1\teqtl_effect_size\teqtl_effect_size_se\tN\tmaf\tgenotype_sdev\n')
 
 # Open output file handle
 t_indi = gzip.open(individual_expression_file, 'wt')
@@ -256,8 +248,15 @@ for chrom_num in range(1,23):
 
 	# Load in chromosome plink data
 	(bim, fam, G) = read_plink(onek_genomes_plink_filestem + str(chrom_num))
+
 	if eqtl_sample_size > G.shape[1]:
 		raise ValueError('Requested eqtl_sample_size=' + str(eqtl_sample_size) + ' but only ' + str(G.shape[1]) + ' genotype samples are available.')
+
+	if chrom_num == 1:
+		# Randomly sample individuals for eqtl analysis
+		sample_indices = np.sort(np.random.choice(G.shape[1], size=eqtl_sample_size, replace=False))
+		if genotype_sample_mapping_file is not None:
+			np.savetxt(genotype_sample_mapping_file, sample_indices, fmt='%d')
 
 	# Create mapping from variant id to index
 	rsid_to_genotype_index = create_mapping_from_variant_id_to_genotype_index(np.asarray(bim['snp']))
@@ -321,6 +320,8 @@ for chrom_num in range(1,23):
 		# Standardize genotype matrix
 		std_geno_mat = standardize_geno(geno_mat)
 
+		# Standardized genotype matrix
+		genotype_sdevs = np.std(geno_mat, axis=1, ddof=1)
 
 		# extract causal effects for gene
 		causal_effect_tupler = gene_id_to_causal_effects[gene_name]
@@ -361,7 +362,7 @@ for chrom_num in range(1,23):
 
 		# Print to output file
 		for var_iter, variant_id in enumerate(cis_variant_names):
-			t.write(gene_name + '\t' + variant_id + '\t' + str(cis_variant_chroms[var_iter]) + '\t' + str(cis_variant_poss[var_iter]) + '\t' + cis_variant_a0s[var_iter] + '\t' + cis_variant_a1s[var_iter] + '\t' + str(eqtl_beta[var_iter]) + '\t' + str(eqtl_beta_se[var_iter]) + '\t' + str(n_samp) + '\t' + str(mafs[var_iter]) + '\n')
+			t.write(gene_name + '\t' + variant_id + '\t' + str(cis_variant_chroms[var_iter]) + '\t' + str(cis_variant_poss[var_iter]) + '\t' + cis_variant_a0s[var_iter] + '\t' + cis_variant_a1s[var_iter] + '\t' + str(eqtl_beta[var_iter]) + '\t' + str(eqtl_beta_se[var_iter]) + '\t' + str(n_samp) + '\t' + str(mafs[var_iter]) + '\t' + str(genotype_sdevs[var_iter]) + '\n')
 
 		# Print to individual output file
 		for indi_iter, indi_expr in enumerate(gene_expression):

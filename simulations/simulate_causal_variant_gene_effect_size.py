@@ -56,8 +56,8 @@ causal_variant_gene_effect_size_file = sys.argv[3]
 
 
 # Potential n causal variants per gene
-n_causal_variants = np.arange(5,20)
-cis_snp_h2s = np.asarray([.0025, .005, .015])
+n_causal_variants = np.arange(2,6)
+cis_snp_h2s = np.asarray([.015, .02, .025])
 
 # Set random seed
 np.random.seed(simulation_iter)
@@ -70,7 +70,6 @@ t.write('gene\tvariant\tchr\tsnp_pos\ta0\ta1\teffect_size\n')
 # Loop through genes
 f = open(gene_ld_summary_file)
 head_count = 0
-aa = []
 for line in f:
 	line = line.rstrip()
 	data = line.split('\t')
@@ -84,10 +83,11 @@ for line in f:
 
 	tot_variants_in_gene = len(cis_variants)
 
-	causal_variant_to_gene_effect_sizes = simulate_causal_effect_sizes(tot_variants_in_gene, np.arange(2,5), cis_snp_h2s)
+	causal_variant_to_gene_effect_sizes = simulate_causal_effect_sizes(tot_variants_in_gene, n_causal_variants, cis_snp_h2s)
 	
 	for var_iter, variant_name in enumerate(cis_variants):
 		t.write(gene_id + '\t' + variant_name + '\t' + cis_chroms[var_iter] + '\t' + cis_poss[var_iter] + '\t' + cis_variant_a0s[var_iter] + '\t' + cis_variant_a1s[var_iter] + '\t' + str(causal_variant_to_gene_effect_sizes[var_iter]) + '\n')
 
 f.close()
 t.close()
+

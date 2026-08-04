@@ -1,9 +1,18 @@
 args = commandArgs(trailingOnly=TRUE)
 library(cowplot)
 library(ggplot2)
-library(hash)
 library(RColorBrewer)
 options(warn=1)
+
+# The inference results directory holds one bootstrap stats file per method per simulation, and the
+# two methods do not share a schema: SLDMC reports (annotation_name, category_name) with the
+# simulated annotations living in category_name, while the fine-mapped-SNP analysis reports a single
+# annotation_name that already matches the annoN names used by the true simulated summaries.
+methods_list <- list(
+	list(key="sldmc", label="SLDMC", pattern="_ld_corr_results_bootstrap_stats\\.txt$"),
+	list(key="fine_mapped", label="Fine-mapped SNPs", pattern="_fm_corr_results_bootstrap_stats\\.txt$")
+)
+sldmc_annotation_name <- "sim_signal_prop"
 
 figure_theme <- function() {
 	return(
@@ -74,121 +83,169 @@ extract_simulation_iter_from_file <- function(file_name) {
 	return(matches[1])
 }
 
-load_estimated_corr_summary_across_sims <- function(correlation_inference_results_dir) {
-	result_files <- list.files(correlation_inference_results_dir, pattern="_bootstrap_stats\\.txt$", full.names=TRUE)
-	if (length(result_files) == 0) {
-		stop(paste("No estimated result files found in", correlation_inference_results_dir))
+order_annotation_names <- function(annotation_names) {
+	annotation_names <- unique(annotation_names)
+	if (length(annotation_names) > 0 && all(grepl("^anno[0-9]+$", annotation_names))) {
+		return(annotation_names[order(as.numeric(sub("^anno", "", annotation_names)))])
 	}
-
-	all_est <- data.frame()
-	for (result_file in result_files) {
-		if (is.na(file.info(result_file)$size) || file.info(result_file)$size == 0) {
-			next
-		}
-		tmp <- read.table(result_file, header=TRUE, sep="\t", stringsAsFactors=FALSE)
-		tmp$simulation_name <- basename(result_file)
-		all_est <- rbind(all_est, tmp)
-	}
-	if (nrow(all_est) == 0) {
-		stop(paste("Estimated result files were found in", correlation_inference_results_dir, "but all were empty"))
-	}
-
-	output_names <- c("correlation", "calibration_slope")
-	summary_list <- list()
-	for (output_name in output_names) {
-		subset_df <- all_est[all_est$output_name == output_name, ]
-		annotation_names <- unique(subset_df$annotation_name)
-		annotation_names <- annotation_names[order(annotation_names)]
-
-		output_summary <- data.frame(
-			annotation_name=annotation_names,
-			mean=rep(NA, length(annotation_names)),
-			ci_lower=rep(NA, length(annotation_names)),
-			ci_upper=rep(NA, length(annotation_names)),
-			n_sims=rep(NA, length(annotation_names)),
-			stringsAsFactors=FALSE
-		)
-
-		for (anno_iter in seq_along(annotation_names)) {
-			anno_name <- annotation_names[anno_iter]
-			anno_df <- subset_df[subset_df$annotation_name == anno_name, ]
-			anno_means <- anno_df$mean
-			n_sims <- length(anno_means)
-			mean_val <- mean(anno_means)
-			sem_val <- sd(anno_means)/sqrt(n_sims)
-
-			output_summary$mean[anno_iter] <- mean_val
-			output_summary$ci_lower[anno_iter] <- mean_val - 1.96*sem_val
-			output_summary$ci_upper[anno_iter] <- mean_val + 1.96*sem_val
-			output_summary$n_sims[anno_iter] <- n_sims
-		}
-		summary_list[[output_name]] <- output_summary
-	}
-	return(summary_list)
+	return(annotation_names[order(annotation_names)])
 }
 
-load_estimated_corr_per_sim <- function(correlation_inference_results_dir) {
-	result_files <- list.files(correlation_inference_results_dir, pattern="_bootstrap_stats\\.txt$", full.names=TRUE)
+# Read every bootstrap stats file matching a single method's naming convention, keeping only the
+# columns shared across schemas so that files from different methods are never pooled together.
+read_bootstrap_stats_files <- function(results_dir, file_pattern) {
+	result_files <- list.files(results_dir, pattern=file_pattern, full.names=TRUE)
 	if (length(result_files) == 0) {
-		stop(paste("No estimated result files found in", correlation_inference_results_dir))
+		return(NULL)
 	}
 
+	kept_columns <- c("simulation_iter", "annotation_name", "category_name", "output_name", "mean", "bootstrap_se")
 	all_est <- data.frame()
 	for (result_file in result_files) {
 		if (is.na(file.info(result_file)$size) || file.info(result_file)$size == 0) {
 			next
 		}
 		tmp <- read.table(result_file, header=TRUE, sep="\t", stringsAsFactors=FALSE)
+		required_columns <- c("annotation_name", "output_name", "mean", "bootstrap_se")
+		missing_columns <- required_columns[!(required_columns %in% colnames(tmp))]
+		if (length(missing_columns) > 0) {
+			stop(paste("Missing column(s)", paste(missing_columns, collapse=", "), "in", result_file))
+		}
+		if (!("category_name" %in% colnames(tmp))) {
+			tmp$category_name <- NA
+		}
 		tmp$simulation_iter <- extract_simulation_iter_from_file(basename(result_file))
-		all_est <- rbind(all_est, tmp)
+		all_est <- rbind(all_est, tmp[, kept_columns])
 	}
 	if (nrow(all_est) == 0) {
-		stop(paste("Estimated result files were found in", correlation_inference_results_dir, "but all were empty"))
+		return(NULL)
 	}
 	return(all_est)
 }
 
-load_true_corr_summary_across_sims <- function(correlation_borzoi_est_effect_dir) {
-	result_files <- list.files(correlation_borzoi_est_effect_dir, pattern="_true_sim_effect_summary\\.txt$", full.names=TRUE)
-	if (length(result_files) == 0) {
-		stop(paste("No true simulated summary files found in", correlation_borzoi_est_effect_dir))
-	}
-
-	all_true <- data.frame()
-	for (result_file in result_files) {
-		if (is.na(file.info(result_file)$size) || file.info(result_file)$size == 0) {
+# SLDMC names its output categories 'prop_<gaussian proportion>', so recovering the annoN names used
+# everywhere else means going through the category file, where category_index is the one-hot index of
+# the corresponding annoN column.
+load_sldmc_category_map <- function(correlation_borzoi_est_effect_dir) {
+	category_files <- list.files(correlation_borzoi_est_effect_dir, pattern="_sldmc_categories\\.txt$", full.names=TRUE)
+	category_map <- data.frame()
+	for (category_file in category_files) {
+		if (is.na(file.info(category_file)$size) || file.info(category_file)$size == 0) {
 			next
 		}
-		tmp <- read.table(result_file, header=TRUE, sep="\t", stringsAsFactors=FALSE)
-		tmp$simulation_name <- basename(result_file)
-		all_true <- rbind(all_true, tmp)
+		tmp <- read.table(category_file, header=TRUE, sep="\t", stringsAsFactors=FALSE)
+		tmp <- tmp[tmp$anno_name == sldmc_annotation_name, ]
+		if (nrow(tmp) == 0) {
+			next
+		}
+		category_map <- rbind(
+			category_map,
+			data.frame(
+				category_name=tmp$category_name,
+				mapped_annotation_name=paste0("anno", tmp$category_index),
+				stringsAsFactors=FALSE
+			)
+		)
 	}
-	if (nrow(all_true) == 0) {
-		stop(paste("True simulated summary files were found in", correlation_borzoi_est_effect_dir, "but all were empty"))
+	if (nrow(category_map) == 0) {
+		return(NULL)
 	}
+	return(unique(category_map))
+}
 
-	annotation_names <- unique(all_true$annotation_name)
-	annotation_names <- annotation_names[order(annotation_names)]
-
-	true_correlation_df <- data.frame(
-		annotation_name=annotation_names,
-		true_simulated_value=rep(NA, length(annotation_names)),
+# Fallback when no category file is available: the simulated proportions are generated on an
+# ascending grid, so sorting the prop_ categories numerically recovers the annotation index.
+build_sldmc_category_map_from_names <- function(category_names) {
+	category_names <- unique(category_names)
+	if (!all(grepl("^prop_", category_names))) {
+		return(NULL)
+	}
+	prop_values <- suppressWarnings(as.numeric(sub("^prop_", "", category_names)))
+	if (any(is.na(prop_values))) {
+		return(NULL)
+	}
+	category_names <- category_names[order(prop_values)]
+	return(data.frame(
+		category_name=category_names,
+		mapped_annotation_name=paste0("anno", seq_along(category_names) - 1),
 		stringsAsFactors=FALSE
-	)
-	true_calibration_slope_df <- data.frame(
+	))
+}
+
+harmonize_sldmc_annotation_names <- function(all_est, correlation_borzoi_est_effect_dir) {
+	# Result files predating the SLDMC refactor have no category_name and so cannot be placed on the
+	# same annotation axis; drop them rather than pooling two different estimators.
+	n_legacy_rows <- sum(is.na(all_est$category_name))
+	if (n_legacy_rows > 0) {
+		message(paste("Ignoring", n_legacy_rows, "SLDMC result row(s) with no category_name (pre-SLDMC output format)"))
+	}
+	all_est <- all_est[!is.na(all_est$category_name) & all_est$annotation_name == sldmc_annotation_name, ]
+	if (nrow(all_est) == 0) {
+		message(paste("No SLDMC result rows with annotation_name", sldmc_annotation_name, "were found"))
+		return(NULL)
+	}
+	category_map <- load_sldmc_category_map(correlation_borzoi_est_effect_dir)
+	if (is.null(category_map)) {
+		category_map <- build_sldmc_category_map_from_names(all_est$category_name)
+	}
+	if (is.null(category_map)) {
+		stop(paste("Could not map SLDMC category names onto annotation names using category files in", correlation_borzoi_est_effect_dir))
+	}
+	merged_df <- merge(all_est, category_map, by="category_name", all.x=TRUE)
+	unmapped_categories <- unique(merged_df$category_name[is.na(merged_df$mapped_annotation_name)])
+	if (length(unmapped_categories) > 0) {
+		stop(paste("Unmapped SLDMC category name(s):", paste(unmapped_categories, collapse=", ")))
+	}
+	merged_df$annotation_name <- merged_df$mapped_annotation_name
+	merged_df$mapped_annotation_name <- NULL
+	return(merged_df)
+}
+
+load_estimated_corr_per_sim <- function(correlation_inference_results_dir, correlation_borzoi_est_effect_dir, method) {
+	all_est <- read_bootstrap_stats_files(correlation_inference_results_dir, method$pattern)
+	if (is.null(all_est)) {
+		return(NULL)
+	}
+	if (method$key == "sldmc") {
+		all_est <- harmonize_sldmc_annotation_names(all_est, correlation_borzoi_est_effect_dir)
+		if (is.null(all_est)) {
+			return(NULL)
+		}
+	}
+	duplicate_keys <- paste(all_est$simulation_iter, all_est$annotation_name, all_est$output_name, sep=":")
+	if (any(duplicated(duplicate_keys))) {
+		stop(paste("Duplicate (simulation, annotation, output) rows found for method", method$key))
+	}
+	return(all_est)
+}
+
+summarize_estimated_corr_across_sims <- function(all_est, output_name) {
+	subset_df <- all_est[all_est$output_name == output_name, ]
+	annotation_names <- order_annotation_names(subset_df$annotation_name)
+
+	output_summary <- data.frame(
 		annotation_name=annotation_names,
-		true_simulated_value=rep(NA, length(annotation_names)),
+		mean=rep(NA, length(annotation_names)),
+		ci_lower=rep(NA, length(annotation_names)),
+		ci_upper=rep(NA, length(annotation_names)),
+		n_sims=rep(NA, length(annotation_names)),
 		stringsAsFactors=FALSE
 	)
 
 	for (anno_iter in seq_along(annotation_names)) {
 		anno_name <- annotation_names[anno_iter]
-		anno_df <- all_true[all_true$annotation_name == anno_name, ]
-		true_correlation_df$true_simulated_value[anno_iter] <- mean(anno_df$pearson_correlation)
-		true_calibration_slope_df$true_simulated_value[anno_iter] <- mean(anno_df$regression_slope)
-	}
+		anno_df <- subset_df[subset_df$annotation_name == anno_name, ]
+		anno_means <- anno_df$mean
+		n_sims <- length(anno_means)
+		mean_val <- mean(anno_means)
+		sem_val <- sd(anno_means)/sqrt(n_sims)
 
-	return(list(correlation=true_correlation_df, calibration_slope=true_calibration_slope_df))
+		output_summary$mean[anno_iter] <- mean_val
+		output_summary$ci_lower[anno_iter] <- mean_val - 1.96*sem_val
+		output_summary$ci_upper[anno_iter] <- mean_val + 1.96*sem_val
+		output_summary$n_sims[anno_iter] <- n_sims
+	}
+	return(output_summary)
 }
 
 load_true_corr_per_sim <- function(correlation_borzoi_est_effect_dir) {
@@ -212,42 +269,65 @@ load_true_corr_per_sim <- function(correlation_borzoi_est_effect_dir) {
 	return(all_true)
 }
 
+summarize_true_corr_across_sims <- function(all_true, true_column_name) {
+	annotation_names <- order_annotation_names(all_true$annotation_name)
+	true_df <- data.frame(
+		annotation_name=annotation_names,
+		true_simulated_value=rep(NA, length(annotation_names)),
+		stringsAsFactors=FALSE
+	)
+	for (anno_iter in seq_along(annotation_names)) {
+		anno_df <- all_true[all_true$annotation_name == annotation_names[anno_iter], ]
+		true_df$true_simulated_value[anno_iter] <- mean(anno_df[, true_column_name])
+	}
+	return(true_df)
+}
+
+merge_estimated_and_true_summary <- function(estimated_summary_df, true_summary_df) {
+	merged_df <- merge(estimated_summary_df, true_summary_df, by="annotation_name", all.x=TRUE, sort=FALSE)
+	merged_df <- merged_df[match(estimated_summary_df$annotation_name, merged_df$annotation_name), ]
+	rownames(merged_df) <- NULL
+	return(merged_df)
+}
+
 make_coverage_summary <- function(all_est, all_true, output_name, true_column_name) {
 	est_df <- all_est[all_est$output_name == output_name, c("simulation_iter", "annotation_name", "mean", "bootstrap_se")]
 	true_df <- all_true[, c("simulation_iter", "annotation_name", true_column_name)]
 	colnames(true_df)[3] <- "true_value"
 	merged_df <- merge(est_df, true_df, by=c("simulation_iter", "annotation_name"))
+	if (nrow(merged_df) == 0) {
+		stop(paste("No overlapping (simulation, annotation) pairs between estimated and true results for", output_name))
+	}
 	coverage_levels <- c(.90, .95, .99)
 	coverage_summary <- data.frame()
-		for (coverage_level in coverage_levels) {
-			z_value <- qnorm((1.0 + coverage_level)/2.0)
-			tmp_df <- merged_df
-			tmp_df$ci_lower <- tmp_df$mean - z_value*tmp_df$bootstrap_se
-			tmp_df$ci_upper <- tmp_df$mean + z_value*tmp_df$bootstrap_se
-			tmp_df$covered <- (tmp_df$true_value >= tmp_df$ci_lower) & (tmp_df$true_value <= tmp_df$ci_upper)
-		annotation_names <- unique(tmp_df$annotation_name)
-		annotation_names <- annotation_names[order(annotation_names)]
-			for (anno_name in annotation_names) {
-				anno_df <- tmp_df[tmp_df$annotation_name == anno_name, ]
-				observed_coverage <- mean(anno_df$covered)
-				n_sims <- nrow(anno_df)
-				coverage_sem <- sqrt(observed_coverage*(1.0-observed_coverage)/n_sims)
-				coverage_ci_lower <- max(0, observed_coverage - 1.96*coverage_sem)
-				coverage_ci_upper <- min(1, observed_coverage + 1.96*coverage_sem)
-				coverage_summary <- rbind(
-					coverage_summary,
-					data.frame(
-						annotation_name=anno_name,
-						coverage_label=paste0(as.integer(coverage_level*100), "%"),
-						nominal_coverage=coverage_level,
-						observed_coverage=observed_coverage,
-						coverage_sem=coverage_sem,
-						ci_lower=coverage_ci_lower,
-						ci_upper=coverage_ci_upper,
-						stringsAsFactors=FALSE
-					)
+	for (coverage_level in coverage_levels) {
+		z_value <- qnorm((1.0 + coverage_level)/2.0)
+		tmp_df <- merged_df
+		tmp_df$ci_lower <- tmp_df$mean - z_value*tmp_df$bootstrap_se
+		tmp_df$ci_upper <- tmp_df$mean + z_value*tmp_df$bootstrap_se
+		tmp_df$covered <- (tmp_df$true_value >= tmp_df$ci_lower) & (tmp_df$true_value <= tmp_df$ci_upper)
+		annotation_names <- order_annotation_names(tmp_df$annotation_name)
+		for (anno_name in annotation_names) {
+			anno_df <- tmp_df[tmp_df$annotation_name == anno_name, ]
+			observed_coverage <- mean(anno_df$covered)
+			n_sims <- nrow(anno_df)
+			coverage_sem <- sqrt(observed_coverage*(1.0-observed_coverage)/n_sims)
+			coverage_ci_lower <- max(0, observed_coverage - 1.96*coverage_sem)
+			coverage_ci_upper <- min(1, observed_coverage + 1.96*coverage_sem)
+			coverage_summary <- rbind(
+				coverage_summary,
+				data.frame(
+					annotation_name=anno_name,
+					coverage_label=paste0(as.integer(coverage_level*100), "%"),
+					nominal_coverage=coverage_level,
+					observed_coverage=observed_coverage,
+					coverage_sem=coverage_sem,
+					ci_lower=coverage_ci_lower,
+					ci_upper=coverage_ci_upper,
+					stringsAsFactors=FALSE
 				)
-			}
+			)
+		}
 	}
 	return(coverage_summary)
 }
@@ -260,47 +340,72 @@ correlation_inference_results_dir <- args[1]
 correlation_borzoi_est_effect_dir <- args[2]
 viz_dir <- args[3]
 
+if (!dir.exists(viz_dir)) {
+	dir.create(viz_dir, recursive=TRUE)
+}
+
 
 #################
-# Load in data
+# Load in true simulated values
 ################
-estimated_result_summary <- load_estimated_corr_summary_across_sims(correlation_inference_results_dir)
-true_result_summary <- load_true_corr_summary_across_sims(correlation_borzoi_est_effect_dir)
-all_estimated_results <- load_estimated_corr_per_sim(correlation_inference_results_dir)
 all_true_results <- load_true_corr_per_sim(correlation_borzoi_est_effect_dir)
-estimated_correlation_summary_df <- estimated_result_summary[["correlation"]]
-estimated_calibration_slope_summary_df <- estimated_result_summary[["calibration_slope"]]
-estimated_correlation_summary_df <- merge(estimated_correlation_summary_df, true_result_summary[["correlation"]], by="annotation_name", all.x=TRUE, sort=FALSE)
-estimated_calibration_slope_summary_df <- merge(estimated_calibration_slope_summary_df, true_result_summary[["calibration_slope"]], by="annotation_name", all.x=TRUE, sort=FALSE)
+true_result_summary <- list(
+	correlation=summarize_true_corr_across_sims(all_true_results, "pearson_correlation"),
+	calibration_slope=summarize_true_corr_across_sims(all_true_results, "regression_slope")
+)
 
 
 #################
-# Bias plots
-#################
-write.table(estimated_correlation_summary_df, file=file.path(viz_dir, "estimated_correlation_summary_across_sims.txt"), sep="\t", quote=FALSE, row.names=FALSE)
-write.table(estimated_calibration_slope_summary_df, file=file.path(viz_dir, "estimated_calibration_slope_summary_across_sims.txt"), sep="\t", quote=FALSE, row.names=FALSE)
+# One set of bias and coverage plots per inference method
+################
+output_specs <- list(
+	list(key="correlation", output_name="correlation", true_column_name="pearson_correlation", label="Correlation"),
+	list(key="calibration_slope", output_name="calibration_slope", true_column_name="regression_slope", label="Calibration Slope")
+)
 
-correlation_bias_plot <- make_bias_barplot(estimated_correlation_summary_df, "Correlation")
-calibration_bias_plot <- make_bias_barplot(estimated_calibration_slope_summary_df, "Calibration Slope")
+n_methods_plotted <- 0
+for (method in methods_list) {
+	all_estimated_results <- load_estimated_corr_per_sim(correlation_inference_results_dir, correlation_borzoi_est_effect_dir, method)
+	if (is.null(all_estimated_results)) {
+		message(paste("No usable result files for method", method$key, "in", correlation_inference_results_dir, "- skipping"))
+		next
+	}
+	n_methods_plotted <- n_methods_plotted + 1
 
-ggsave(filename=file.path(viz_dir, "estimated_correlation_bias_barplot.pdf"), plot=correlation_bias_plot, width=7.2, height=3.5)
-ggsave(filename=file.path(viz_dir, "estimated_calibration_slope_bias_barplot.pdf"), plot=calibration_bias_plot, width=7.2, height=3.5)
+	for (output_spec in output_specs) {
+		if (!(output_spec$output_name %in% all_estimated_results$output_name)) {
+			message(paste("Method", method$key, "has no", output_spec$output_name, "rows - skipping"))
+			next
+		}
 
+		#################
+		# Bias plot
+		#################
+		estimated_summary_df <- summarize_estimated_corr_across_sims(all_estimated_results, output_spec$output_name)
+		estimated_summary_df <- merge_estimated_and_true_summary(estimated_summary_df, true_result_summary[[output_spec$key]])
+		summary_output_file <- file.path(viz_dir, paste0("estimated_", output_spec$key, "_summary_across_sims_", method$key, ".txt"))
+		write.table(estimated_summary_df, file=summary_output_file, sep="\t", quote=FALSE, row.names=FALSE)
 
-#################
-# Coverage plots
-#################
-correlation_coverage_df <- make_coverage_summary(all_estimated_results, all_true_results, "correlation", "pearson_correlation")
-calibration_coverage_df <- make_coverage_summary(all_estimated_results, all_true_results, "calibration_slope", "regression_slope")
+		bias_plot <- make_bias_barplot(estimated_summary_df, paste0(output_spec$label, " (", method$label, ")"))
+		bias_plot_file <- file.path(viz_dir, paste0("estimated_", output_spec$key, "_bias_barplot_", method$key, ".pdf"))
+		ggsave(filename=bias_plot_file, plot=bias_plot, width=7.2, height=3.5)
 
-write.table(correlation_coverage_df, file=file.path(viz_dir, "estimated_correlation_coverage_summary.txt"), sep="\t", quote=FALSE, row.names=FALSE)
-write.table(calibration_coverage_df, file=file.path(viz_dir, "estimated_calibration_slope_coverage_summary.txt"), sep="\t", quote=FALSE, row.names=FALSE)
+		#################
+		# Coverage plot
+		#################
+		coverage_df <- make_coverage_summary(all_estimated_results, all_true_results, output_spec$output_name, output_spec$true_column_name)
+		coverage_output_file <- file.path(viz_dir, paste0("estimated_", output_spec$key, "_coverage_summary_", method$key, ".txt"))
+		write.table(coverage_df, file=coverage_output_file, sep="\t", quote=FALSE, row.names=FALSE)
 
-correlation_coverage_plot <- make_coverage_plot(correlation_coverage_df, "Correlation Coverage")
-calibration_coverage_plot <- make_coverage_plot(calibration_coverage_df, "Calibration Slope Coverage")
+		coverage_plot <- make_coverage_plot(coverage_df, paste0(output_spec$label, " Coverage (", method$label, ")"))
+		coverage_plot_file <- file.path(viz_dir, paste0("estimated_", output_spec$key, "_coverage_plot_", method$key, ".pdf"))
+		ggsave(filename=coverage_plot_file, plot=coverage_plot, width=7.2, height=3.6)
 
-ggsave(filename=file.path(viz_dir, "estimated_correlation_coverage_plot.pdf"), plot=correlation_coverage_plot, width=7.2, height=3.6)
-ggsave(filename=file.path(viz_dir, "estimated_calibration_slope_coverage_plot.pdf"), plot=calibration_coverage_plot, width=7.2, height=3.6)
+		print(bias_plot_file)
+		print(coverage_plot_file)
+	}
+}
 
-print(file.path(viz_dir, "estimated_calibration_slope_bias_barplot.pdf"))
-print(file.path(viz_dir, "estimated_calibration_slope_coverage_plot.pdf"))
+if (n_methods_plotted == 0) {
+	stop(paste("No estimated result files found in", correlation_inference_results_dir))
+}
