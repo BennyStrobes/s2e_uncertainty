@@ -195,12 +195,12 @@ fi
 #################
 # 7. Visualize results
 #################
+if false; then
 source ~/.bashrc
 conda activate plink_env
 
-
 Rscript visualize_sldmc_results.R ${sldmc_results_output_dir} $simulation_results_dir $borzoi_gtex_unique_target_names_file $visualize_ld_corr_results_dir $annotation_name_file
-
+fi
 
 
 
