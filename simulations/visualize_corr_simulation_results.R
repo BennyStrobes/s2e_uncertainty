@@ -75,6 +75,63 @@ make_coverage_plot <- function(coverage_df, plot_title) {
 	)
 }
 
+make_se_comparison_plot <- function(se_df, plot_title) {
+	long_df <- rbind(
+		data.frame(
+			annotation_name=se_df$annotation_name,
+			se_type="Average estimated SE",
+			value=se_df$mean_estimated_se,
+			ci_lower=se_df$mean_estimated_se_ci_lower,
+			ci_upper=se_df$mean_estimated_se_ci_upper,
+			stringsAsFactors=FALSE
+		),
+		data.frame(
+			annotation_name=se_df$annotation_name,
+			se_type="Empirical SE",
+			value=se_df$empirical_se,
+			ci_lower=se_df$empirical_se_ci_lower,
+			ci_upper=se_df$empirical_se_ci_upper,
+			stringsAsFactors=FALSE
+		)
+	)
+	long_df$annotation_name <- factor(long_df$annotation_name, levels=se_df$annotation_name)
+	long_df$se_type <- factor(long_df$se_type, levels=c("Average estimated SE", "Empirical SE"))
+	dodge_width <- 0.7
+	return(
+		ggplot(long_df, aes(x=annotation_name, y=value, fill=se_type, group=se_type)) +
+			geom_col(width=.62, color="#22313B", linewidth=.35, position=position_dodge(width=dodge_width)) +
+			geom_errorbar(aes(ymin=ci_lower, ymax=ci_upper), width=.16, linewidth=.45, color="#22313B", position=position_dodge(width=dodge_width)) +
+			scale_fill_manual(values=c("Average estimated SE"="#4C78A8", "Empirical SE"="#D06A4B"), name="") +
+			xlab("") +
+			ylab("Standard error") +
+			ggtitle(plot_title) +
+			figure_theme() +
+			theme(axis.text.x=element_text(angle=35, hjust=1, vjust=1), legend.position="right")
+	)
+}
+
+# Ratio of average estimated SE to empirical SE, on a log axis so that a 25% overestimate and a 20%
+# underestimate sit the same distance from the calibrated line at 1.
+make_se_ratio_plot <- function(se_df, plot_title) {
+	se_df$annotation_name <- factor(se_df$annotation_name, levels=se_df$annotation_name)
+	ratio_plot <- ggplot(se_df, aes(x=annotation_name, y=se_ratio, group=1)) +
+		geom_hline(yintercept=1, linetype="dashed", linewidth=.6, color="#D06A4B") +
+		geom_errorbar(aes(ymin=se_ratio_ci_lower, ymax=se_ratio_ci_upper), width=.14, linewidth=.45, color="#33424F") +
+		geom_line(linewidth=.7, color="#4C78A8") +
+		geom_point(size=2, color="#22313B") +
+		xlab("") +
+		ylab("Average estimated SE / empirical SE") +
+		ggtitle(plot_title) +
+		figure_theme() +
+		theme(axis.text.x=element_text(angle=35, hjust=1, vjust=1))
+
+	ratio_values <- c(se_df$se_ratio, se_df$se_ratio_ci_lower, se_df$se_ratio_ci_upper)
+	if (all(is.finite(ratio_values)) && all(ratio_values > 0)) {
+		ratio_plot <- ratio_plot + scale_y_log10()
+	}
+	return(ratio_plot)
+}
+
 extract_simulation_iter_from_file <- function(file_name) {
 	matches <- regmatches(file_name, regexpr("sim[0-9]+", file_name))
 	if (length(matches) == 0 || matches[1] == "") {
@@ -332,6 +389,97 @@ make_coverage_summary <- function(all_est, all_true, output_name, true_column_na
 	return(coverage_summary)
 }
 
+# Empirical SE is sd() of the residuals rather than their root-mean-square, so it measures the spread
+# of the estimator around its own mean and is not inflated by bias. Estimated SEs are averaged in
+# variance space (root-mean-square) so the comparison to that spread is variance against variance.
+compute_se_calibration_stats <- function(residuals, estimated_ses) {
+	empirical_se <- sd(residuals)
+	mean_estimated_se <- sqrt(mean(estimated_ses^2))
+	if (!is.finite(empirical_se) || empirical_se == 0) {
+		se_ratio <- NA
+	} else {
+		se_ratio <- mean_estimated_se/empirical_se
+	}
+	return(c(empirical_se=empirical_se, mean_estimated_se=mean_estimated_se, se_ratio=se_ratio))
+}
+
+# Resampling whole simulations keeps each residual paired with the estimated SE from the same
+# simulation, so the ratio's interval accounts for both quantities moving together.
+bootstrap_se_calibration_stats <- function(residuals, estimated_ses, n_bootstraps) {
+	n_sims <- length(residuals)
+	bootstrap_draws <- matrix(NA, nrow=n_bootstraps, ncol=3)
+	colnames(bootstrap_draws) <- c("empirical_se", "mean_estimated_se", "se_ratio")
+	for (bootstrap_iter in seq_len(n_bootstraps)) {
+		bootstrap_indices <- sample(seq_len(n_sims), size=n_sims, replace=TRUE)
+		bootstrap_draws[bootstrap_iter, ] <- compute_se_calibration_stats(residuals[bootstrap_indices], estimated_ses[bootstrap_indices])
+	}
+	return(bootstrap_draws)
+}
+
+bootstrap_ci <- function(bootstrap_values) {
+	if (all(is.na(bootstrap_values))) {
+		return(c(NA, NA))
+	}
+	return(unname(quantile(bootstrap_values, c(.025, .975), na.rm=TRUE)))
+}
+
+make_se_calibration_summary <- function(all_est, all_true, output_name, true_column_name, n_bootstraps=1000) {
+	est_df <- all_est[all_est$output_name == output_name, c("simulation_iter", "annotation_name", "mean", "bootstrap_se")]
+	true_df <- all_true[, c("simulation_iter", "annotation_name", true_column_name)]
+	colnames(true_df)[3] <- "true_value"
+	merged_df <- merge(est_df, true_df, by=c("simulation_iter", "annotation_name"))
+
+	n_dropped_rows <- sum(!(is.finite(merged_df$mean) & is.finite(merged_df$bootstrap_se) & is.finite(merged_df$true_value)))
+	if (n_dropped_rows > 0) {
+		message(paste("Dropping", n_dropped_rows, "non-finite (simulation, annotation) row(s) for", output_name))
+	}
+	merged_df <- merged_df[is.finite(merged_df$mean) & is.finite(merged_df$bootstrap_se) & is.finite(merged_df$true_value), ]
+	if (nrow(merged_df) == 0) {
+		stop(paste("No usable (simulation, annotation) pairs for standard error calibration of", output_name))
+	}
+	merged_df$residual <- merged_df$mean - merged_df$true_value
+
+	annotation_names <- order_annotation_names(merged_df$annotation_name)
+	se_summary <- data.frame()
+	for (anno_name in annotation_names) {
+		anno_df <- merged_df[merged_df$annotation_name == anno_name, ]
+		n_sims <- nrow(anno_df)
+		if (n_sims < 2) {
+			message(paste("Annotation", anno_name, "has fewer than 2 usable simulations for", output_name, "- skipping"))
+			next
+		}
+		observed_stats <- compute_se_calibration_stats(anno_df$residual, anno_df$bootstrap_se)
+		bootstrap_draws <- bootstrap_se_calibration_stats(anno_df$residual, anno_df$bootstrap_se, n_bootstraps)
+		empirical_ci <- bootstrap_ci(bootstrap_draws[, "empirical_se"])
+		estimated_ci <- bootstrap_ci(bootstrap_draws[, "mean_estimated_se"])
+		ratio_ci <- bootstrap_ci(bootstrap_draws[, "se_ratio"])
+
+		se_summary <- rbind(
+			se_summary,
+			data.frame(
+				annotation_name=anno_name,
+				n_sims=n_sims,
+				mean_residual=mean(anno_df$residual),
+				empirical_se=observed_stats["empirical_se"],
+				empirical_se_ci_lower=empirical_ci[1],
+				empirical_se_ci_upper=empirical_ci[2],
+				mean_estimated_se=observed_stats["mean_estimated_se"],
+				mean_estimated_se_ci_lower=estimated_ci[1],
+				mean_estimated_se_ci_upper=estimated_ci[2],
+				se_ratio=observed_stats["se_ratio"],
+				se_ratio_ci_lower=ratio_ci[1],
+				se_ratio_ci_upper=ratio_ci[2],
+				stringsAsFactors=FALSE
+			)
+		)
+	}
+	if (nrow(se_summary) == 0) {
+		return(NULL)
+	}
+	rownames(se_summary) <- NULL
+	return(se_summary)
+}
+
 
 ####################
 # Command line args
@@ -343,6 +491,10 @@ viz_dir <- args[3]
 if (!dir.exists(viz_dir)) {
 	dir.create(viz_dir, recursive=TRUE)
 }
+
+# The standard error calibration intervals are bootstrapped, so fix the seed to keep figures stable
+# across reruns on the same results.
+set.seed(1)
 
 
 #################
@@ -401,8 +553,22 @@ for (method in methods_list) {
 		coverage_plot_file <- file.path(viz_dir, paste0("estimated_", output_spec$key, "_coverage_plot_", method$key, ".pdf"))
 		ggsave(filename=coverage_plot_file, plot=coverage_plot, width=7.2, height=3.6)
 
-		print(bias_plot_file)
-		print(coverage_plot_file)
+
+		#################
+		# Empirical standard error plot
+		#################
+		se_calibration_df <- make_se_calibration_summary(all_estimated_results, all_true_results, output_spec$output_name, output_spec$true_column_name)
+		if (is.null(se_calibration_df)) {
+			message(paste("No annotation had enough simulations for standard error calibration of", output_spec$output_name, "-", method$key))
+			next
+		}
+		se_output_file <- file.path(viz_dir, paste0("estimated_", output_spec$key, "_se_calibration_summary_", method$key, ".txt"))
+		write.table(se_calibration_df, file=se_output_file, sep="\t", quote=FALSE, row.names=FALSE)
+
+		se_comparison_plot <- make_se_comparison_plot(se_calibration_df, paste0(output_spec$label, " Standard Errors (", method$label, ")"))
+		se_comparison_plot_file <- file.path(viz_dir, paste0("estimated_", output_spec$key, "_se_comparison_plot_", method$key, ".pdf"))
+		ggsave(filename=se_comparison_plot_file, plot=se_comparison_plot, width=7.2, height=3.6)
+
 	}
 }
 
