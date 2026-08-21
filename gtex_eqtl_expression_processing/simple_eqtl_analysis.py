@@ -287,7 +287,6 @@ for chrom_num in range(1,23):
 		# Get genotype mat
 		per_snp_missing_rate = np.sum(np.isnan(geno_mat),axis=1)/(geno_mat.shape[1])
 
-
 		# Missing rate
 		row_means = np.nanmean(geno_mat, axis=1)
 		nan_rows, nan_cols = np.where(np.isnan(geno_mat))
