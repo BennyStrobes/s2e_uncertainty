@@ -15,20 +15,22 @@ borzoi_gtex_independent_target_names_file=${borzoi_results_dir}"targets_gtex_onl
 # Directory containing genotype data
 plink2_genotype_data_dir="/lab-share/CHIP-Strober-e2/Public/ben/process_gtex_genotype_data/processed_genotype/"
 
+# Gtex donor attributes (has ancestry)
+gtex_donor_info_file="/lab-share/CHIP-Strober-e2/Public/GTEx/expression/v8_per_tissue_expression/covariates/GTEx_Analysis_2017-06-05_v8_WholeGenomeSeq_899Indiv_QC_TABLE.tsv"
+
+# GTex v8 per tissue expression
+gtex_v8_expression_dir="/lab-share/CHIP-Strober-e2/Public/GTEx/expression/v8_per_tissue_expression/GTEx_Analysis_v8_eQTL_expression_matrices/"
+
+# GTEx v8 covariate dir
+gtex_v10_covariate_dir="/lab-share/CHIP-Strober-e2/Public/GTEx/expression/v8_per_tissue_expression/covariates/GTEx_Analysis_v8_eQTL_covariates/"
+
+
+
 # Directory containing eQTL summary statistics
 eqtl_sumstats_dir="/lab-share/CHIP-Strober-e2/Public/GTEx/eqtl_sumstats/"
 
 # Gtex v10 protein coding genes
 gtex_v10_pc_genes_gtf="/lab-share/CHIP-Strober-e2/Public/gene_annotation_files/gencode.v39.gtex.protein_coding.genes.gtf"
-
-# GTex v10 per tissue expression
-gtex_v10_expression_dir="/lab-share/CHIP-Strober-e2/Public/GTEx/expression/per_tissue_expression/"
-
-# GTEx v10 covariate dir
-gtex_v10_covariate_dir="/lab-share/CHIP-Strober-e2/Public/GTEx/expression/per_tissue_covariates/"
-
-# Gtex subject attributes (has ancestry)
-gtex_subject_attributes_file="/lab-share/CHIP-Strober-e2/Public/GTEx/genotype_dbgap_download/phs000424.v11.pht002742.v9.p2.c1.GTEx_Subject_Phenotypes.GRU.txt.gz"
 
 
 #################
